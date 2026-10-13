@@ -11312,7 +11312,7 @@ pub const ptrace = switch (native_os) {
 
 pub extern "c" fn sem_init(sem: *sem_t, pshared: c_int, value: c_uint) c_int;
 pub extern "c" fn sem_destroy(sem: *sem_t) c_int;
-pub extern "c" fn sem_open(name: [*:0]const u8, flag: c_int, mode: mode_t, value: c_uint) *sem_t;
+pub extern "c" fn sem_open(name: [*:0]const u8, flag: c_int, ...) *sem_t;
 pub extern "c" fn sem_close(sem: *sem_t) c_int;
 pub extern "c" fn sem_post(sem: *sem_t) c_int;
 pub extern "c" fn sem_wait(sem: *sem_t) c_int;
@@ -12114,3 +12114,23 @@ const private = struct {
         return &private.errno;
     }
 };
+
+test "sem_open passes mode and value as variadic arguments" {
+    if (!builtin.link_libc or !native_os.isDarwin()) return error.SkipZigTest;
+
+    const sem_unlink = struct {
+        extern "c" fn sem_unlink(name: [*:0]const u8) c_int;
+    }.sem_unlink;
+
+    var name_buf: [32]u8 = undefined;
+    const name = try std.mem.printSentinel(&name_buf, "/zig-test-{d}", .{getpid()}, 0);
+    _ = sem_unlink(name);
+    const sem = sem_open(name, @bitCast(O{ .CREAT = true, .EXCL = true }), @as(mode_t, 0o600), @as(c_uint, 3));
+    try std.testing.expect(@intFromPtr(sem) != maxInt(usize));
+    defer _ = sem_close(sem);
+    defer _ = sem_unlink(name);
+
+    for (0..3) |_| try std.testing.expectEqual(0, sem_trywait(sem));
+    try std.testing.expectEqual(-1, sem_trywait(sem));
+    try std.testing.expectEqual(E.AGAIN, errno(-1));
+}
