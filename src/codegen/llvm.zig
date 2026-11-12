@@ -3143,6 +3143,7 @@ pub const Object = struct {
             .void, .sret => .void,
             .by_val => try o.lowerType(.fromInterned(fn_info.return_type), .as_value),
             .mem_cast => |llvm_ret_ty| llvm_ret_ty,
+            .fields => |fields| fields.ty,
         };
         const llvm_fn_kind: Builder.Type.Function.Kind = switch (fn_info.is_var_args) {
             true => .vararg,

@@ -1012,6 +1012,11 @@ fn buildCall(
             _ = try fg.wip.store(.normal, call, ptr, alignment);
             break :ret_val_ptr ptr;
         },
+        .fields => |fields| ret_val_ptr: {
+            const ptr = try fg.buildZigAlloca(return_type, .none);
+            try fg.storeReturnFields(call, ptr, return_type.abiAlignment(zcu), fields);
+            break :ret_val_ptr ptr;
+        },
     };
     if (isByRef(return_type, zcu)) {
         return ret_val_ptr;
@@ -1091,6 +1096,7 @@ fn airRet(self: *FuncGen, inst: Air.Inst.Index, safety: bool) Allocator.Error!vo
                 const loaded = try self.wip.load(.normal, llvm_abi_ret_ty, rp, ret_ty_align.toLlvm(), "");
                 _ = try self.wip.ret(loaded);
             },
+            .fields => |fields| _ = try self.wip.ret(try self.loadReturnFields(rp, ret_ty_align, fields)),
         }
         return;
     }
@@ -1117,6 +1123,46 @@ fn airRet(self: *FuncGen, inst: Air.Inst.Index, safety: bool) Allocator.Error!vo
             const ret_val = try self.wip.load(.normal, llvm_ret_ty, ptr, ret_ty_align.toLlvm(), "");
             _ = try self.wip.ret(ret_val);
         },
+        .fields => |fields| {
+            const operand = try self.resolveInst(un_op);
+            const ptr: Builder.Value = if (!isByRef(ret_ty, zcu)) ptr: {
+                const ptr = try self.buildZigAlloca(ret_ty, .none);
+                try self.store(ptr, .none, operand, ret_ty, .normal);
+                break :ptr ptr;
+            } else operand;
+            _ = try self.wip.ret(try self.loadReturnFields(ptr, ret_ty_align, fields));
+        },
+    }
+}
+
+/// Loads the LLVM return value of a function with return strategy `.fields` from `ptr`, which
+/// points to the actual return value.
+fn loadReturnFields(fg: *FuncGen, ptr: Builder.Value, alignment: InternPool.Alignment, fields: FnReturnStrat.Fields) Allocator.Error!Builder.Value {
+    const builder = &fg.object.builder;
+    if (!fields.ty.isStruct(builder)) {
+        const field_ptr = try fg.ptraddConst(ptr, fields.offsets[0]);
+        return fg.wip.load(.normal, fields.ty, field_ptr, alignment.offset(fields.offsets[0]).toLlvm(), "");
+    }
+    var field_vals: [2]Builder.Value = undefined;
+    for (&field_vals, fields.ty.structFields(builder), fields.offsets) |*field_val, field_ty, offset| {
+        const field_ptr = try fg.ptraddConst(ptr, offset);
+        field_val.* = try fg.wip.load(.normal, field_ty, field_ptr, alignment.offset(offset).toLlvm(), "");
+    }
+    return fg.wip.buildAggregate(fields.ty, &field_vals, "");
+}
+
+/// Stores `val`, the LLVM return value of a function with return strategy `.fields`, to `ptr`,
+/// which points to the actual return value.
+fn storeReturnFields(fg: *FuncGen, val: Builder.Value, ptr: Builder.Value, alignment: InternPool.Alignment, fields: FnReturnStrat.Fields) Allocator.Error!void {
+    if (!fields.ty.isStruct(&fg.object.builder)) {
+        const field_ptr = try fg.ptraddConst(ptr, fields.offsets[0]);
+        _ = try fg.wip.store(.normal, val, field_ptr, alignment.offset(fields.offsets[0]).toLlvm());
+        return;
+    }
+    for (fields.offsets, 0..) |offset, field_index| {
+        const field_val = try fg.wip.extractValue(val, &.{@intCast(field_index)}, "");
+        const field_ptr = try fg.ptraddConst(ptr, offset);
+        _ = try fg.wip.store(.normal, field_val, field_ptr, alignment.offset(offset).toLlvm());
     }
 }
 
@@ -1145,6 +1191,10 @@ fn airRetLoad(self: *FuncGen, inst: Air.Inst.Index) Allocator.Error!void {
             const ret_ty_align = ret_ty.abiAlignment(zcu);
             const loaded = try self.wip.load(.normal, llvm_abi_ret_ty, ptr, ret_ty_align.toLlvm(), "");
             _ = try self.wip.ret(loaded);
+        },
+        .fields => |fields| {
+            assert(self.ret_ptr == .none);
+            _ = try self.wip.ret(try self.loadReturnFields(ptr, ret_ty.abiAlignment(zcu), fields));
         },
     }
 }
@@ -7163,7 +7213,7 @@ const ParamTypeIterator = struct {
                     .i64_array => |size| return .{ .i64_array = size },
                 }
             },
-            .loongarch32_ilp32, .loongarch64_lp64 => switch (loongarch_c_abi.classifyType(ty, zcu)) {
+            .loongarch32_ilp32, .loongarch64_lp64 => switch (it.classifyLoongArch(ty)) {
                 .ignored => {
                     it.zig_index += 1;
                     return .no_bits;
@@ -7173,24 +7223,22 @@ const ParamTypeIterator = struct {
                     it.llvm_index += 1;
                     return .byval;
                 },
-                .member => |member_ty| {
+                .member => |member| {
                     it.types_buffer[0..1].* = .{
-                        try it.object.lowerType(member_ty, .as_value),
+                        try it.object.lowerType(member.ty, .as_value),
                     };
-                    it.offsets_buffer[0..2].* = .{ 0, member_ty.abiSize(zcu) };
+                    it.offsets_buffer[0..2].* = .{ member.offset, ty.abiSize(zcu) };
                     it.types_len = 1;
                     it.zig_index += 1;
                     it.llvm_index += 1;
                     return .multiple_llvm_types;
                 },
-                .member_pair => |member_tys| {
+                .member_pair => |members| {
                     it.types_buffer[0..2].* = .{
-                        try it.object.lowerType(member_tys[0], .as_value),
-                        try it.object.lowerType(member_tys[1], .as_value),
+                        try it.object.lowerType(members[0].ty, .as_value),
+                        try it.object.lowerType(members[1].ty, .as_value),
                     };
-                    const first_size = member_tys[0].abiSize(zcu);
-                    const second_size = member_tys[0].abiSize(zcu);
-                    it.offsets_buffer[0..3].* = .{ 0, first_size, first_size + second_size };
+                    it.offsets_buffer[0..3].* = .{ members[0].offset, members[1].offset, ty.abiSize(zcu) };
                     it.types_len = 2;
                     it.zig_index += 1;
                     it.llvm_index += 2;
@@ -7216,6 +7264,12 @@ const ParamTypeIterator = struct {
                 .memory_gar_pair => {
                     it.zig_index += 1;
                     it.llvm_index += 1;
+                    // A value aligned to 2*GRLEN is passed as one integer, so that it gets an
+                    // aligned stack slot, and an aligned GAR pair when variadic.
+                    if (ty.abiAlignment(zcu).toByteUnits() == loongarchGrlenBytes(it.cc) * 2) return switch (ty.zigTypeTag(zcu)) {
+                        .int, .float => .byval,
+                        else => .abi_sized_int,
+                    };
                     return switch (it.cc) {
                         else => unreachable,
                         .loongarch32_ilp32 => .{ .i32_array = 2 },
@@ -7225,7 +7279,7 @@ const ParamTypeIterator = struct {
                 .address => {
                     it.zig_index += 1;
                     it.llvm_index += 1;
-                    return .byref;
+                    return .byref_mut;
                 },
             },
             .mips_o32 => {
@@ -7517,6 +7571,48 @@ const ParamTypeIterator = struct {
         return if (it.has_sret) 0 else null;
     }
 
+    /// Classifies a LoongArch C ABI argument, and takes the argument registers it uses. Fixed
+    /// floats, and structs with float members, are passed in FARs (and GARs) only while enough are
+    /// left; otherwise they are passed in GARs and memory like any other value of their size.
+    fn classifyLoongArch(it: *ParamTypeIterator, ty: Type) loongarch_c_abi.Class {
+        const zcu = it.object.zcu;
+        const is_fixed = it.zig_index < it.param_types.len;
+        const class = loongarch_c_abi.classifyType(ty, zcu);
+        const far_regs: Regs = switch (class) {
+            .far, .member => .{ .fpr = 1 },
+            .member_pair => |members| regs: {
+                const fprs = @as(u8, @intFromBool(members[0].ty.isRuntimeFloat())) + @intFromBool(members[1].ty.isRuntimeFloat());
+                break :regs .{ .gpr = 2 - fprs, .fpr = fprs };
+            },
+            .ignored => return class,
+            else => .{},
+        };
+        if (far_regs.fpr > 0 and is_fixed and it.free_regs.tryTake(far_regs)) return class;
+
+        const grlen_bytes = loongarchGrlenBytes(it.cc);
+        const size = ty.abiSize(zcu);
+        // Variadic arguments aligned to 2*GRLEN take an even-odd pair of GARs.
+        const needed_gprs: u8 = if (!is_fixed and ty.abiAlignment(zcu).toByteUnits() == grlen_bytes * 2)
+            2 + it.free_regs.gpr % 2
+        else if (size > grlen_bytes and size <= grlen_bytes * 2)
+            2
+        else
+            1;
+        it.free_regs.gpr -= @min(needed_gprs, it.free_regs.gpr);
+        return switch (class) {
+            .member, .member_pair => loongarch_c_abi.classifyMemory(ty, zcu),
+            else => class,
+        };
+    }
+
+    fn loongarchGrlenBytes(cc: std.lang.CallingConvention) u64 {
+        return switch (cc) {
+            else => unreachable,
+            .loongarch32_ilp32 => 4,
+            .loongarch64_lp64 => 8,
+        };
+    }
+
     pub fn errorReturnTraceIndex(it: ParamTypeIterator) ?u32 {
         return if (it.has_err_ret_trace)
             if (it.sretIndex() != null) 1 else 0
@@ -7548,6 +7644,10 @@ pub fn iterateParamTypes(
                 .gpr = 6 - @as(u8, @intFromBool(has_sret)),
                 .fpr = 8,
             },
+            .loongarch32_ilp32, .loongarch64_lp64 => .{
+                .gpr = 8 - @as(u8, @intFromBool(has_sret)),
+                .fpr = 8,
+            },
             else => undefined,
         },
         .has_sret = has_sret,
@@ -7567,6 +7667,15 @@ pub const FnReturnStrat = union(enum) {
     /// The LLVM function returns the given `Builder.Type` by reinterpreting memory containing the
     /// actual return value. The actual return type may be by-val or by-ref.
     mem_cast: Builder.Type,
+    /// The LLVM function returns `ty`, which is either one field of the actual return value or a
+    /// struct of two of its fields, found at `offsets` in the actual return value. The actual
+    /// return type may be by-val or by-ref.
+    fields: Fields,
+
+    pub const Fields = struct {
+        ty: Builder.Type,
+        offsets: [2]u64,
+    };
 
     fn forceByVal(o: *Object, ret_ty: Type) Allocator.Error!FnReturnStrat {
         if (!isByRef(ret_ty, o.zcu)) return .by_val;
@@ -7609,11 +7718,20 @@ pub fn fnReturnStrat(o: *Object, cc: std.lang.CallingConvention, ret_ty: Type) A
         .loongarch32_ilp32, .loongarch64_lp64 => switch (loongarch_c_abi.classifyType(ret_ty, zcu)) {
             .ignored => .void,
             .gar, .far => .by_val,
-            .member => |member_ty| .{ .mem_cast = try o.lowerType(member_ty, .as_value) },
-            .member_pair => |member_tys| .{ .mem_cast = try o.builder.structType(.normal, &.{
-                try o.lowerType(member_tys[0], .as_value),
-                try o.lowerType(member_tys[1], .as_value),
-            }) },
+            .member => |member| .{ .fields = .{
+                .ty = try o.lowerType(member.ty, .as_value),
+                .offsets = .{ member.offset, undefined },
+            } },
+            .member_pair => |members| .{
+                .fields = .{
+                    // Like clang, use a packed struct when the second member is misaligned.
+                    .ty = try o.builder.structType(if (members[1].ty.abiAlignment(zcu).check(members[1].offset)) .normal else .@"packed", &.{
+                        try o.lowerType(members[0].ty, .as_value),
+                        try o.lowerType(members[1].ty, .as_value),
+                    }),
+                    .offsets = .{ members[0].offset, members[1].offset },
+                },
+            },
             .memory_gar => .{ .mem_cast = switch (cc) {
                 else => unreachable,
                 .loongarch32_ilp32 => .i32,

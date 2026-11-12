@@ -73,10 +73,6 @@ static void assert_or_panic(bool ok) {
 #  define ZIG_NO_COMPLEX
 #endif
 
-#if defined(__loongarch__) && defined(__loongarch_soft_float)
-#  define ZIG_NO_COMPLEX
-#endif
-
 #ifdef __powerpc__
 #  define ZIG_NO_COMPLEX
 #endif
@@ -409,7 +405,6 @@ void c_test_longdouble(void) {
 }
 
 #ifndef __hexagon__
-#ifndef __loongarch__
 #ifndef __mips__
 #ifndef ZIG_PPC64
 #if !(defined(__i386__) && defined(_WIN32))
@@ -4661,7 +4656,6 @@ void c_test_vector_512_bool(void) {
     });
 }
 
-#endif
 #endif
 #endif
 #endif
@@ -15952,7 +15946,6 @@ void run_c_tests(void) {
 #endif
 
 #if !(defined(__i386__) && defined(_WIN32))
-#ifndef __loongarch__
 #ifndef ZIG_MIPS64
 #ifndef ZIG_PPC32
     {
@@ -15962,17 +15955,14 @@ void run_c_tests(void) {
 #endif
 #endif
 #endif
-#endif
 
 #ifndef __hexagon__
-#ifndef __loongarch__
 #ifndef ZIG_MIPS64
 #ifndef ZIG_PPC32
     {
         struct BigStruct s = {1, 2, 3, 4, 5};
         zig_big_struct(s);
     }
-#endif
 #endif
 #endif
 #endif
@@ -15997,7 +15987,6 @@ void run_c_tests(void) {
 
 #ifndef __hexagon__
 #ifndef __i386__
-#ifndef __loongarch__
 #ifndef ZIG_MIPS64
 #ifndef ZIG_PPC32
     {
@@ -16008,10 +15997,8 @@ void run_c_tests(void) {
 #endif
 #endif
 #endif
-#endif
 
 #ifndef __hexagon__
-#ifndef __loongarch__
 #ifndef ZIG_MIPS64
 #ifndef ZIG_PPC32
     {
@@ -16021,11 +16008,9 @@ void run_c_tests(void) {
 #endif
 #endif
 #endif
-#endif
 
 #ifndef __hexagon__
 #ifndef __i386__
-#ifndef __loongarch__
 #ifndef ZIG_MIPS64
 #ifndef ZIG_PPC32
     {
@@ -16036,10 +16021,8 @@ void run_c_tests(void) {
 #endif
 #endif
 #endif
-#endif
 
 #ifndef __hexagon__
-#ifndef __loongarch__
 #ifndef ZIG_MIPS64
 #ifndef ZIG_PPC32
     {
@@ -16051,7 +16034,6 @@ void run_c_tests(void) {
         assert_or_panic(res.d == 23);
         assert_or_panic(res.e == 24);
     }
-#endif
 #endif
 #endif
 #endif
