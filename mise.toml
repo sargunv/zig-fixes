@@ -1,0 +1,13 @@
+# Tools for working on this fork. Versions are pinned here; there is no
+# lockfile.
+
+[settings]
+lockfile = false
+
+[tools]
+# Upstream's release of the line this branch tracks. It runs `zig fmt`, and it
+# exercises fixes under lib/ through `--zig-lib-dir`.
+zig = "0.17.1"
+# For building the compiler itself. See ci/ for upstream's recipe.
+cmake = "4.4.5"
+ninja = "1.13.2"
