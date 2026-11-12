@@ -1515,6 +1515,8 @@ fn reportUndefs(self: *MachO) !void {
         }
     }
 
+    if (self.base.comp.missingDarwinSdk()) diags.addError(Compilation.missing_darwin_sdk_msg, .{});
+
     return error.HasUndefinedSymbols;
 }
 

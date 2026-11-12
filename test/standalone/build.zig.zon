@@ -150,6 +150,9 @@
         .compiler_rt_panic = .{
             .path = "compiler_rt_panic",
         },
+        .ios_sysroot = .{
+            .path = "ios_sysroot",
+        },
         .ios = .{
             .path = "ios",
         },

@@ -1765,6 +1765,31 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
 
         const link_libc = options.config.link_libc;
 
+        // The bundled libSystem stub covers only macOS and Mac Catalyst. For
+        // iOS, tvOS, visionOS and watchOS, use the SDK given as the sysroot.
+        const darwin_sdk: ?*const LibCInstallation = sdk: {
+            if (options.libc_installation != null or !link_libc) break :sdk null;
+            switch (target.os.tag) {
+                .ios, .tvos, .visionos, .watchos => {},
+                else => break :sdk null,
+            }
+            const sdk_dir = options.sysroot orelse break :sdk null;
+            const sdk_settings = try fs.path.join(arena, &.{ sdk_dir, "SDKSettings.json" });
+            Io.Dir.cwd().access(io, sdk_settings, .{}) catch |err| switch (err) {
+                error.Canceled => |e| return e,
+                else => break :sdk null,
+            };
+            const include_dir = try fs.path.join(arena, &.{ sdk_dir, "usr", "include" });
+            const lci = try arena.create(LibCInstallation);
+            lci.* = .{
+                .include_dir = include_dir,
+                .sys_include_dir = include_dir,
+                .crt_dir = try fs.path.join(arena, &.{ sdk_dir, "usr", "lib" }),
+                .darwin_sdk_dir = sdk_dir,
+            };
+            break :sdk lci;
+        };
+
         const libc_dirs = std.zig.LibCDirs.detect(
             arena,
             io,
@@ -1772,7 +1797,7 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
             target,
             options.root_mod.resolved_target.is_native_abi,
             link_libc,
-            options.libc_installation,
+            options.libc_installation orelse darwin_sdk,
             options.environ_map,
         ) catch |err| switch (err) {
             error.OutOfMemory => |e| return e,
@@ -2680,6 +2705,19 @@ pub fn clearMiscFailures(comp: *Compilation) void {
     comp.misc_failures.deinit(comp.gpa);
     comp.misc_failures = .{};
 }
+
+/// Whether this is an Apple device target that links libc without an SDK, so
+/// that libc headers are missing and libSystem is the bundled macOS stub.
+pub fn missingDarwinSdk(comp: *const Compilation) bool {
+    const target = comp.getTarget();
+    return comp.config.link_libc and comp.libc_installation == null and
+        target.abi != .simulator and switch (target.os.tag) {
+        .ios, .tvos, .visionos, .watchos => true,
+        else => false,
+    };
+}
+
+pub const missing_darwin_sdk_msg = "unable to find an SDK for this target; pass its path with --sysroot";
 
 pub fn getTarget(self: *const Compilation) *const Target {
     return &self.root_mod.resolved_target.result;
@@ -3848,6 +3886,15 @@ pub fn getAllErrorsAlloc(comp: *Compilation) error{OutOfMemory}!ErrorBundle {
 
     for (comp.failed_c_objects.values()) |diag_bundle| {
         try diag_bundle.addToErrorBundle(io, &bundle);
+    }
+    if (comp.missingDarwinSdk()) missing_header: {
+        for (comp.failed_c_objects.values()) |diag_bundle| {
+            for (diag_bundle.diags) |diag| {
+                if (!mem.endsWith(u8, diag.msg, "file not found")) continue;
+                try bundle.addRootErrorMessage(.{ .msg = try bundle.addString(missing_darwin_sdk_msg) });
+                break :missing_header;
+            }
+        }
     }
 
     for (comp.failed_win32_resources.values()) |error_bundle| {
@@ -5691,6 +5738,7 @@ fn updateCObject(
                 switch (result.term) {
                     .exited => |code| {
                         if (code != 0) {
+                            if (comp.missingDarwinSdk()) std.log.err(missing_darwin_sdk_msg, .{});
                             std.process.exit(code);
                         }
                         switch (comp.clang_preprocessor_mode) {
