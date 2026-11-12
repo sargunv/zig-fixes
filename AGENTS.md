@@ -49,9 +49,11 @@ line are merges of upstream. That keeps
 `git log --first-parent --no-merges upstream/0.17.x..fork/0.17.x` an exact
 list of what we carry.
 
-A fix is proposed as a pull request from `fix/<slug>` to the line. Keep the
-pull request at exactly one commit, amending it as review goes on, so that the
-squash merge keeps that commit's message and trailers.
+A fix is proposed as a pull request from `fix/<slug>` to the line, and
+squash-merged. The branch may hold any number of commits. Whoever merges gives
+the squash commit the fix's message and trailers, in the format under Commits.
+GitHub's default squash message is only right when the pull request holds a
+single commit.
 
 ## The backlog
 
