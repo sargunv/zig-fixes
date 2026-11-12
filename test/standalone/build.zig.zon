@@ -144,6 +144,9 @@
         .zerolength_check = .{
             .path = "zerolength_check",
         },
+        .emscripten_threads = .{
+            .path = "emscripten_threads",
+        },
         .coff_dwarf = .{
             .path = "coff_dwarf",
         },

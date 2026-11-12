@@ -15,7 +15,16 @@ pub const SafeAllocator = @import("heap/SafeAllocator.zig");
 pub const FixedBufferAllocator = @import("heap/FixedBufferAllocator.zig");
 pub const BufferFirstAllocator = @import("heap/BufferFirstAllocator.zig");
 pub const PageAllocator = @import("heap/PageAllocator.zig");
-pub const WasmAllocator = if (builtin.single_threaded) BrkAllocator else @compileError("unimplemented");
+pub const WasmAllocator = if (builtin.single_threaded)
+    BrkAllocator
+else if (builtin.os.tag == .emscripten)
+    // Emscripten's libc allocator is thread-safe; see `page_allocator`.
+    struct {
+        pub const vtable = c_allocator_impl.vtable;
+        pub const Error = Allocator.Error;
+    }
+else
+    @compileError("unimplemented");
 pub const BrkAllocator = @import("heap/BrkAllocator.zig");
 
 /// Deprecated; use `SafeAllocator.Options`.

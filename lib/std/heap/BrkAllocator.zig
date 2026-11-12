@@ -165,7 +165,12 @@ fn allocBigPages(n: usize) usize {
         return top_free_ptr;
     }
 
-    if (builtin.cpu.arch.isWasm()) {
+    if (builtin.os.tag == .emscripten) {
+        // Emscripten's libc owns the wasm memory; growing it directly would
+        // overlap `malloc` and leave the JS heap views stale.
+        const ptr = std.heap.c_allocator.rawAlloc(slot_size_bytes, .fromByteUnits(bigpage_size), @returnAddress()) orelse return 0;
+        return @intFromPtr(ptr);
+    } else if (builtin.cpu.arch.isWasm()) {
         comptime assert(std.heap.page_size_max == std.heap.page_size_min);
         const page_size = std.heap.page_size_max;
         const pages_per_bigpage = bigpage_size / page_size;
