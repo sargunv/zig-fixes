@@ -153,6 +153,9 @@
         .ios = .{
             .path = "ios",
         },
+        .ios_sysroot = .{
+            .path = "ios_sysroot",
+        },
         .depend_on_main_mod = .{
             .path = "depend_on_main_mod",
         },

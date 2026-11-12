@@ -2,7 +2,7 @@
 title: Apple device targets link against Zig's bundled macOS libSystem.tbd instead of the platform SDK, so every libc symbol is undefined
 priority: 1
 area: compiler
-targets: [aarch64-ios, aarch64-tvos, aarch64-visionos]
+targets: [aarch64-ios, aarch64-tvos, aarch64-visionos, aarch64-watchos]
 upstream: [codeberg#37298]
 affects-line: yes
 ---
@@ -87,6 +87,14 @@ Verified by reading code at 0.17.1 and by reproduction:
      resolution to the frontend"), first released in 0.17.0.
    - In 0.15.1 the old path ended with an explicit "unable to find libSystem
      system library" error instead.
+   - No release before 0.17.0 linked these targets without a `--libc` file
+     either. 0.15.2 and 0.16.0 both stop with "unable to find libSystem system
+     library" for `-target aarch64-ios`, with or without `--sysroot` (verified
+     with both releases, Xcode 26.4.1). What 0.17.0 regressed is the error,
+     not a working link.
+   - Upstream's own `test/standalone/ios` case, which runs only with
+     `-Denable-ios-sdk`, fails on 0.17.1 with the same 102 undefined symbols
+     (verified).
 3. **The simulators link by accident.** `src/link/MachO/Dylib.zig:733-736`
    also accepts `<arch>-macos` entries for simulator platforms, so they link
    against the bundled macOS stub. Their output records SDK 27.0 from Zig's
@@ -129,7 +137,108 @@ Either way, the simulator path should stop relying on the macOS fallback.
 - Run `otool -l hello | grep -A4 LC_BUILD_VERSION` and check platform 2 (iOS)
   with the real SDK version.
 
+## Fix
+
+In `src/Compilation.zig`:
+
+- **`--sysroot` is honored.** For an iOS, tvOS, visionOS or watchOS target
+  (device or simulator) that links libc with no `--libc` file, a `--sysroot`
+  that contains `SDKSettings.json` becomes the libc installation:
+  `usr/include`, `usr/lib`, and `SDKSettings.json` beneath it. The build
+  then takes the path a native macOS build takes: libSystem from the SDK's
+  `usr/lib`, the SDK version from its `SDKSettings.json`, headers and
+  frameworks from the SDK, and `-syslibroot` set to it. This works on any
+  host. A `--sysroot` without `SDKSettings.json` is treated as before.
+- **The missing SDK is named.** With no SDK, the build proceeds exactly as on
+  the release, against the bundled macOS stub. So anything that needs no
+  libc symbol or header still links: a C `main` that calls nothing, a Zig
+  object linked with `zig cc`, objects, and static libraries. Where the
+  release fails, the same errors are followed by `error: unable to find an
+  SDK for this target; pass its path with --sysroot`:
+  - after undefined symbols, from the Mach-O linker's `reportUndefs`;
+  - after a C compile error whose message ends in "file not found", for
+    `build-exe`, `build-obj` and `build-lib`;
+  - after any clang failure under `zig cc`, which passes clang's own stderr
+    through unparsed, so a plain C syntax error there gets the line too.
+    The exception is `zig cc -c` with dependency-file flags such as `-MD`:
+    there Zig replaces itself with clang and cannot add a line, so the output
+    stays the release's. Taking that path away would change the dependency
+    file that working builds get.
+
+Test: `test/standalone/ios_sysroot` runs on any host, with no Apple SDK. It
+checks in a minimal fake SDK, written for the test rather than copied from
+Apple's:
+- `sdk/SDKSettings.json` sets `Version` to 42.7.
+- `sdk/usr/lib/libSystem.tbd` has current version 4242 and exports only
+  `_fake_sdk_marker` and `dyld_stub_binder`.
+
+The test runs the compiler under test as `zig build-exe -target aarch64-ios
+--sysroot <dir>`, in two cases:
+- **`main.c` with `--sysroot sdk`.** `main` calls `fake_sdk_marker`, and a
+  small host program (`check.zig`) reads the Mach-O output. It requires
+  platform iOS, SDK 42.7 in `LC_BUILD_VERSION`, libSystem 4242 in the
+  `LC_LOAD_DYLIB`, and `_fake_sdk_marker` imported.
+- **`plain.c` with `--sysroot sdk/usr`.** That directory has no
+  `SDKSettings.json`. The check requires the bundled stub's SDK version and
+  libSystem, not the fake ones.
+
+On the 0.17.1 release and on the line, the first case fails with `undefined
+symbol: _fake_sdk_marker` (on macOS, and in an `ubuntu:24.04` container), and
+the second passes. With this fix both pass, on both hosts.
+
+Nothing new happens without flags: the compiler does not look for an SDK by
+itself. That is the separate entry `apple-device-sdk-autodiscovery`.
+Simulators without `--sysroot`, macOS, Mac Catalyst and DriverKit take
+exactly the release's path.
+
+Verified with compilers built from this checkout and the 0.17.1 release.
+The tests ran on macOS (Apple silicon, Xcode 26.4.1) and in an
+`ubuntu:24.04` container, with the branch cross-compiled for
+`aarch64-linux-musl`. On the Mac they ran twice: once with stub
+`xcode-select`/`xcrun` first on `PATH` (no SDK), and once with Xcode. The
+`--sysroot` cases used read-only copies of each platform SDK's
+`SDKSettings.json`, `usr/lib/libSystem.tbd` and `usr/include`. Each case ran
+for `aarch64-ios`, `aarch64-tvos`, `aarch64-watchos` and `aarch64-visionos`:
+
+| Case | 0.17.1 release | This fix |
+|---|---|---|
+| `zig cc main.c` and `build-exe main.c`, where `main` calls nothing | links | links, same output |
+| `build-obj` of a std-free Zig file, then `zig cc` on the object | links | links, same output |
+| `build-obj` (Zig and C), `zig cc -c` | ok | ok, same output |
+| `build-lib` static (Zig and C) | ok | ok, same output |
+| `build-lib -dynamic` (Zig and C) | 73–102 undefined symbols | same errors, then the SDK line |
+| `build-exe` hello world (Zig std) | 88–102 undefined symbols | same errors, then the SDK line |
+| `zig cc` hello world (`stdio.h`) | `'stdio.h' file not found` | same error, then the SDK line |
+| `build-exe hello.zig --sysroot <sdk>` | 88–102 undefined symbols | links; platforms 2/3/4/11, SDK 26.4 |
+| `zig cc hello.c --sysroot <sdk>` | `'stdio.h' file not found` | links; platforms 2/3/4/11, SDK 26.4 |
+| `build-exe` of a Zig file that exports `main` | compile error in `start.zig` | the same compile error |
+
+"Same output" means the same load-command list, `LC_BUILD_VERSION`, linked
+dylibs, imported symbols and exported symbols. Generated `___anon` names
+are excluded, because they vary with embedded paths. 46 of 46 outputs that
+the release produces were the same on both hosts, with and without Xcode.
+
+Also checked:
+- `aarch64-ios-simulator` and `aarch64-tvos-simulator` (hello world and
+  `main.c`), `aarch64-macos`, `x86_64-macos` and `aarch64-maccatalyst`, with
+  no flags: same as the release on both hosts.
+- `--sysroot` pointing at an empty directory: `zig cc main.c` links against
+  the stub with SDK 27.0, as on the release.
+- No compiler ran `xcrun` or `xcode-select` on either host.
+- `aarch64-driverkit` (hello.zig, a C `main` with no libc calls, and C with
+  `<stdlib.h>`, each with and without `--sysroot`): same results as the
+  release.
+- Upstream's `test/standalone/ios` still fails, as on the release: 102
+  undefined symbols, now followed by the SDK line. The test finds the SDK
+  itself and passes it as include, library and framework paths, not as a
+  sysroot. It passes with `apple-device-sdk-autodiscovery`. Adding `zig
+  build --sysroot` doesn't help either, because the build then re-roots the
+  test's absolute paths under the sysroot and the frameworks are not found.
+
 ## Notes
+
+- Related: `apple-device-sdk-autodiscovery` (finding the SDK with no
+  flags), `driverkit-sdk-layout-and-std-symbols`.
 
 - **Workaround today (verified for hello world only):** pass the SDK as a libc
   file:
