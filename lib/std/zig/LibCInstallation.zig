@@ -761,6 +761,36 @@ pub const CrtBasenames = struct {
             },
         };
 
+        if (target.abi.isOpenHarmony()) return switch (mode) {
+            .dynamic_lib => .{
+                .crti = "crti.o",
+                .crtbegin = "clang_rt.crtbegin.o",
+                .crtend = "clang_rt.crtend.o",
+                .crtn = "crtn.o",
+            },
+            .dynamic_exe, .static_exe => .{
+                .crt0 = "crt1.o",
+                .crti = "crti.o",
+                .crtbegin = "clang_rt.crtbegin.o",
+                .crtend = "clang_rt.crtend.o",
+                .crtn = "crtn.o",
+            },
+            .dynamic_pie => .{
+                .crt0 = "Scrt1.o",
+                .crti = "crti.o",
+                .crtbegin = "clang_rt.crtbegin.o",
+                .crtend = "clang_rt.crtend.o",
+                .crtn = "crtn.o",
+            },
+            .static_pie => .{
+                .crt0 = "rcrt1.o",
+                .crti = "crti.o",
+                .crtbegin = "clang_rt.crtbegin.o",
+                .crtend = "clang_rt.crtend.o",
+                .crtn = "crtn.o",
+            },
+        };
+
         return switch (target.os.tag) {
             .linux => switch (mode) {
                 .dynamic_lib => .{
@@ -1067,4 +1097,22 @@ pub fn addToHash(opt_lci: ?*const LibCInstallation, hh: *Cache.HashHelper, abi: 
         },
         else => {},
     }
+}
+
+test "CrtBasenames for OpenHarmony" {
+    const target = try std.zig.system.resolveTargetQuery(std.testing.io, try .parse(.{
+        .arch_os_abi = "aarch64-linux-ohos",
+    }));
+    const basenames: CrtBasenames = .get(.{
+        .target = &target,
+        .link_libc = true,
+        .output_mode = .Exe,
+        .link_mode = .dynamic,
+        .pie = true,
+    });
+    try std.testing.expectEqualStrings("Scrt1.o", basenames.crt0.?);
+    try std.testing.expectEqualStrings("crti.o", basenames.crti.?);
+    try std.testing.expectEqualStrings("clang_rt.crtbegin.o", basenames.crtbegin.?);
+    try std.testing.expectEqualStrings("clang_rt.crtend.o", basenames.crtend.?);
+    try std.testing.expectEqualStrings("crtn.o", basenames.crtn.?);
 }
