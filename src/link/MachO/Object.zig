@@ -2408,6 +2408,18 @@ pub fn hasUnwindRecords(self: Object) bool {
     return self.unwind_records.items.len > 0;
 }
 
+/// Whether any live atom still has a live unwind record after dead stripping.
+pub fn hasLiveUnwindRecords(self: *Object, macho_file: *MachO) bool {
+    for (self.getAtoms()) |atom_index| {
+        const atom = self.getAtom(atom_index) orelse continue;
+        if (!atom.isAlive()) continue;
+        for (atom.getUnwindRecords(macho_file)) |rec_index| {
+            if (self.getUnwindRecord(rec_index).alive) return true;
+        }
+    }
+    return false;
+}
+
 pub fn hasEhFrameRecords(self: Object) bool {
     return self.cies.items.len > 0;
 }
