@@ -968,6 +968,7 @@ fn buildOutputType(
     var linker_repro: ?bool = null;
     var linker_allow_undefined_version: bool = false;
     var linker_enable_new_dtags: ?bool = null;
+    var linker_fix_cortex_a53_843419 = false;
     var disable_c_depfile = false;
     var linker_sort_section: ?link.File.Lld.Elf.SortSection = null;
     var linker_gc_sections: ?bool = null;
@@ -2695,6 +2696,8 @@ fn buildOutputType(
                     linker_enable_new_dtags = true;
                 } else if (mem.eql(u8, arg, "--disable-new-dtags")) {
                     linker_enable_new_dtags = false;
+                } else if (mem.eql(u8, arg, "--fix-cortex-a53-843419")) {
+                    linker_fix_cortex_a53_843419 = true;
                 } else if (mem.eql(u8, arg, "-O")) {
                     linker_optimization = linker_args_it.nextOrFatal();
                 } else if (mem.cutPrefix(u8, arg, "-O")) |rest| {
@@ -3425,6 +3428,10 @@ fn buildOutputType(
         }
     }
 
+    if (linker_fix_cortex_a53_843419 and (target.ofmt != .elf or !create_module.resolved_options.use_lld)) {
+        fatal("--fix-cortex-a53-843419 is only supported when linking ELF with LLD", .{});
+    }
+
     if (create_module.resolved_options.output_mode == .Obj and target.ofmt == .coff) {
         const total_obj_count = create_module.c_source_files.items.len +
             @intFromBool(root_src_file != null) +
@@ -3678,6 +3685,7 @@ fn buildOutputType(
         .version_script = if (version_script) |p| .initCwd(p) else null,
         .linker_allow_undefined_version = linker_allow_undefined_version,
         .linker_enable_new_dtags = linker_enable_new_dtags,
+        .linker_fix_cortex_a53_843419 = linker_fix_cortex_a53_843419,
         .disable_c_depfile = disable_c_depfile,
         .soname = resolved_soname,
         .linker_sort_section = linker_sort_section,
