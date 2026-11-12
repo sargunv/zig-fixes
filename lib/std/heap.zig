@@ -15,7 +15,16 @@ pub const SafeAllocator = @import("heap/SafeAllocator.zig");
 pub const FixedBufferAllocator = @import("heap/FixedBufferAllocator.zig");
 pub const BufferFirstAllocator = @import("heap/BufferFirstAllocator.zig");
 pub const PageAllocator = @import("heap/PageAllocator.zig");
-pub const WasmAllocator = if (builtin.single_threaded) BrkAllocator else @compileError("unimplemented");
+pub const WasmAllocator = if (builtin.single_threaded)
+    BrkAllocator
+else if (builtin.os.tag == .emscripten)
+    // Emscripten's libc allocator is thread-safe; see `page_allocator`.
+    struct {
+        pub const vtable = c_allocator_impl.vtable;
+        pub const Error = Allocator.Error;
+    }
+else
+    @compileError("unimplemented");
 pub const BrkAllocator = @import("heap/BrkAllocator.zig");
 
 /// Deprecated; use `SafeAllocator.Options`.
@@ -340,10 +349,6 @@ pub const page_allocator: Allocator = if (@hasDecl(root, "os") and
     @hasDecl(root.os, "heap") and
     @hasDecl(root.os.heap, "page_allocator"))
     root.os.heap.page_allocator
-else if (builtin.os.tag == .emscripten)
-    // Emscripten's libc owns the wasm memory; growing it directly would
-    // overlap `malloc` and leave the JS heap views stale.
-    c_allocator
 else if (builtin.target.cpu.arch.isWasm()) .{
     .ptr = undefined,
     .vtable = &WasmAllocator.vtable,
@@ -358,14 +363,10 @@ pub const smp_allocator: Allocator = .{
 };
 
 /// This allocator is fast, small, and specific to WebAssembly.
-pub const wasm_allocator: Allocator = if (builtin.os.tag == .emscripten)
-    // See `page_allocator`.
-    c_allocator
-else
-    .{
-        .ptr = undefined,
-        .vtable = &WasmAllocator.vtable,
-    };
+pub const wasm_allocator: Allocator = .{
+    .ptr = undefined,
+    .vtable = &WasmAllocator.vtable,
+};
 
 /// Supports single-threaded WebAssembly and Linux.
 pub const brk_allocator: Allocator = .{

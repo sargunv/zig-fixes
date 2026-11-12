@@ -167,16 +167,16 @@ searching `lib/` for `wasmMemoryGrow`, `WasmAllocator`, `BrkAllocator`,
 ## Fix sketch
 
 The original sketch proposed a dedicated allocator over `posix_memalign` at
-page alignment. That is not needed: `page_allocator` on wasm never
-guaranteed page-aligned blocks (`BrkAllocator` hands out small size classes),
-and `c_allocator` already handles any alignment on Emscripten (with `malloc`
-plus manual alignment, since `std.c` declares no `posix_memalign` there).
-`start.zig` already uses `c_allocator` as the general-purpose allocator for
-every libc-linked wasm program, and Emscripten always links libc
-(`requiresLibC`, `lib/std/Target.zig:2317`).
+page alignment, with Emscripten cases ahead of the wasm cases in
+`page_allocator` and `wasm_allocator`. Neither is needed:
 
-The multithreaded `WasmAllocator` type is not fixed here; see
-emscripten-wasm-allocator-type-threads.
+- Both names, and Zig's own libc, reach memory only through `WasmAllocator`,
+  so fixing `WasmAllocator` fixes all of them at once.
+- `c_allocator` already handles any alignment on Emscripten (with `malloc`
+  plus manual alignment, since `std.c` declares no `posix_memalign` there).
+- `start.zig` already uses `c_allocator` as the general-purpose allocator for
+  every libc-linked wasm program, and Emscripten always links libc
+  (`requiresLibC`, `lib/std/Target.zig:2317`).
 
 ## Verification
 
@@ -271,21 +271,26 @@ object in all four optimize modes. Its thread allocates from
 
 ## Fix
 
-- `lib/std/heap.zig`: on Emscripten, `page_allocator` is `c_allocator`,
-  ahead of the generic wasm case. This fixes 2a and 2c together. A root
-  `os.heap.page_allocator` override still wins.
+Both changes in `lib/std/heap` route `WasmAllocator` through Emscripten's
+libc allocator. `page_allocator` and `wasm_allocator` reach memory only
+through `WasmAllocator` on wasm, so they need no change of their own.
+
+- `lib/std/heap.zig`: in a multithreaded Emscripten build, `WasmAllocator` is
+  a type with the same public declarations as `BrkAllocator` (`vtable` and
+  `Error`), whose `vtable` is `c_allocator`'s. It was a compile error there.
+  This fixes 2a for `page_allocator`, `wasm_allocator` and the type itself.
+  Single-threaded builds and every other target keep `BrkAllocator` or the
+  compile error, as before.
 - `lib/std/Thread.zig`: `maybeAttachSignalStack` returns early on
   Emscripten, as it already does on WASI. Signals on Emscripten are never
   delivered asynchronously, so an alternate signal stack has no use there.
   This fixes 2b.
-- `lib/std/heap.zig`: on Emscripten, `wasm_allocator` is also `c_allocator`,
-  so portable code that picks it on wasm works, with or without threads.
 - `lib/std/heap/BrkAllocator.zig`: on Emscripten, `allocBigPages` takes its
   64 KiB-aligned big pages from `c_allocator` instead of `@wasmMemoryGrow`.
-  This fixes 2c for `brk_allocator` and for code that uses the types
-  `BrkAllocator` and `WasmAllocator` directly, without changing either type.
-  `BrkAllocator` keeps big pages on its own free lists and never returns
-  them, as before.
+  This fixes 2c for every name: single-threaded, `page_allocator`,
+  `wasm_allocator`, `brk_allocator`, and the two types are all
+  `BrkAllocator`. `BrkAllocator` keeps big pages on its own free lists and
+  never returns them, as before.
 - `test/standalone/emscripten_threads`: the compile test for 2a, using
   `page_allocator` and `wasm_allocator` by name.
 
@@ -297,8 +302,8 @@ Verified with Zig 0.17.1 plus this line's `lib/`, emsdk 6.0.13 and Node
 | `t.zig`, multithreaded, all four modes | 2a compile error | prints `in thread`, `done`; exit 0 |
 | `t.zig` with the 2a override, ReleaseSafe | 2b panic in the thread | (override not needed) |
 | `overlap.zig`, single-threaded, for each of `page_allocator`, `wasm_allocator`, `brk_allocator` and `WasmAllocator.vtable` | `overlapping_pairs=32 corrupted_ranges=16`, each | `overlapping_pairs=0 corrupted_ranges=0`, each |
-| `overlap.zig`, multithreaded, `wasm_allocator` | 2a compile error | 0 overlaps, 0 corrupted |
-| `overlap.zig`, multithreaded, `brk_allocator` / `WasmAllocator.vtable` | compile error | unchanged (by design / emscripten-wasm-allocator-type-threads) |
+| `overlap.zig`, multithreaded, `page_allocator`, `wasm_allocator`, `WasmAllocator.vtable` | 2a compile error, each | 0 overlaps, 0 corrupted, each |
+| `overlap.zig`, multithreaded, `brk_allocator` | compile error | unchanged, by design (single-threaded only) |
 | `ArrayList` of 100000 items on `wasm_allocator`, then on `brk_allocator`, all four modes | `error: OutOfMemory` without memory growth; an abort with it | both sums correct, with and without memory growth |
 | one 512 KiB `page_allocator` block, no memory growth | `panic: oom` | succeeds |
 | same, with `-sALLOW_MEMORY_GROWTH` | next print aborts | succeeds |
@@ -315,10 +320,9 @@ Verified with Zig 0.17.1 plus this line's `lib/`, emsdk 6.0.13 and Node
 - Before this fix a program could work around 2a and 2b from its root
   module: set `os.heap.page_allocator` (or `debug.getDebugInfoAllocator`)
   and `std_options.signal_stack_size = null`. Those overrides still work.
-- The first version of this fix covered `page_allocator` only, and left
-  `wasm_allocator`, `brk_allocator` and the two types on raw `memory.grow`.
-  The second commit closes those.
-- Related: emscripten-wasm-allocator-type-threads, the multithreaded
-  `WasmAllocator` type, which cannot be fixed without new public API.
+- A first version of this fix made `page_allocator` itself `c_allocator`
+  on Emscripten and left `wasm_allocator`, `brk_allocator` and the two
+  types on raw `memory.grow`. Fixing `WasmAllocator` and `BrkAllocator`
+  instead covers every name with less code.
 - Multithreaded `wasm32-wasi` still does not compile, for the reason
   github#22807 tracks; this fix changes nothing there.
