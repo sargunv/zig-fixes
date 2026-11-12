@@ -459,6 +459,7 @@ pub const File = struct {
         allow_shlib_undefined: ?bool,
         allow_undefined_version: bool,
         enable_new_dtags: ?bool,
+        fix_cortex_a53_843419: bool,
         subsystem: ?std.zig.Subsystem,
         linker_script: ?Path,
         version_script: ?Path,

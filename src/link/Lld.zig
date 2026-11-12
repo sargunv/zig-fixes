@@ -97,6 +97,7 @@ pub const Elf = struct {
     soname: ?[]const u8,
     allow_undefined_version: bool,
     enable_new_dtags: ?bool,
+    fix_cortex_a53_843419: bool,
     compress_debug_sections: std.zig.CompressDebugSections,
     bind_global_refs_locally: bool,
     pub const HashStyle = enum { sysv, gnu, both };
@@ -154,6 +155,7 @@ pub const Elf = struct {
             .soname = options.soname,
             .allow_undefined_version = options.allow_undefined_version,
             .enable_new_dtags = options.enable_new_dtags,
+            .fix_cortex_a53_843419 = options.fix_cortex_a53_843419,
             .compress_debug_sections = options.compress_debug_sections,
             .bind_global_refs_locally = options.bind_global_refs_locally,
         };
@@ -964,6 +966,10 @@ fn elfLink(lld: *Lld, arena: Allocator) !void {
 
         if (elf.emit_relocs) {
             try argv.append("--emit-relocs");
+        }
+
+        if (elf.fix_cortex_a53_843419) {
+            try argv.append("--fix-cortex-a53-843419");
         }
 
         if (comp.config.rdynamic) {

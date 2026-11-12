@@ -1511,6 +1511,7 @@ pub const CreateOptions = struct {
     version_script: ?Cache.Path = null,
     linker_allow_undefined_version: bool = false,
     linker_enable_new_dtags: ?bool = null,
+    linker_fix_cortex_a53_843419: bool = false,
     soname: ?[]const u8 = null,
     linker_gc_sections: ?bool = null,
     linker_repro: ?bool = null,
@@ -2240,6 +2241,7 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
             .version_script = options.version_script,
             .allow_undefined_version = options.linker_allow_undefined_version,
             .enable_new_dtags = options.linker_enable_new_dtags,
+            .fix_cortex_a53_843419 = options.linker_fix_cortex_a53_843419,
             .gc_sections = options.linker_gc_sections,
             .emit_relocs = options.link_emit_relocs,
             .soname = options.soname,
@@ -3427,6 +3429,7 @@ fn addNonIncrementalStuffToCacheManifest(comp: *Compilation, man: *Cache.Manifes
     try man.addInputPathOptional(opts.version_script, .{});
     man.hash.add(opts.allow_undefined_version);
     man.hash.addOptional(opts.enable_new_dtags);
+    man.hash.add(opts.fix_cortex_a53_843419);
 
     man.hash.addOptional(opts.stack_size);
     man.hash.addOptional(opts.image_base);

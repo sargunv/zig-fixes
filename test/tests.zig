@@ -2824,6 +2824,63 @@ pub fn addCliTests(b: *std.Build) *Step {
         step.dependOn(&check_libbar.step);
     }
 
+    {
+        // Test that `zig cc` passes `--fix-cortex-a53-843419` through to the linker. The adrp at
+        // offset 0xff8 of a page, followed by two loads, is the sequence the erratum describes,
+        // and LLD names each patch it emits `__CortexA53843419_<address>`.
+        const erratum_s = b.addWriteFiles().add("erratum.s",
+            \\    .section .text.erratum, "ax", %progbits
+            \\    .balign 4096
+            \\    .space 4096 - 8
+            \\    adrp x0, dat
+            \\    ldr x1, [x1, #0]
+            \\    ldr x0, [x0, :lo12:dat]
+            \\    ret
+            \\    .data
+            \\dat:
+            \\    .quad 0
+            \\
+        );
+
+        const run = b.addSystemCommand(&.{
+            b.graph.zig_exe,
+            "cc",
+            "--target=aarch64-linux-musl",
+            "-nostdlib",
+            "-shared",
+            "-Wl,--fix-cortex-a53-843419",
+            "-o",
+        });
+        const lib = run.addOutputFileArg("liberratum.so");
+        run.addFileArg(erratum_s);
+        run.setName("zig cc -Wl,--fix-cortex-a53-843419");
+        run.expectStdOutEqual("");
+        run.expectStdErrEqual("");
+
+        const check_lib = b.addCheckFile(lib, .{
+            .expected_matches = &.{"__CortexA53843419_"},
+        });
+
+        step.dependOn(&check_lib.step);
+
+        // Linkers other than LLD for ELF cannot apply the workaround, so the flag is an error.
+        const run_macho = b.addSystemCommand(&.{
+            b.graph.zig_exe,
+            "cc",
+            "--target=aarch64-macos",
+            "-shared",
+            "-Wl,--fix-cortex-a53-843419",
+            "-o",
+        });
+        _ = run_macho.addOutputFileArg("liberratum.dylib");
+        run_macho.addFileArg(b.addWriteFiles().add("empty.c", ""));
+        run_macho.setName("zig cc -Wl,--fix-cortex-a53-843419 for Mach-O");
+        run_macho.expectExitCode(1);
+        run_macho.expectStdErrEqual("error: --fix-cortex-a53-843419 is only supported when linking ELF with LLD\n");
+
+        step.dependOn(&run_macho.step);
+    }
+
     return step;
 }
 
