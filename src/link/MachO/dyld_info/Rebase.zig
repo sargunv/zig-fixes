@@ -42,6 +42,7 @@ pub fn updateSize(rebase: *Rebase, macho_file: *MachO) !void {
             const seg = macho_file.segments.items[seg_id];
             for (atom.getRelocs(macho_file)) |rel| {
                 if (rel.type != .unsigned or rel.meta.length != 3) continue;
+                if (rel.meta.has_subtractor) continue;
                 if (rel.tag == .@"extern") {
                     const sym = rel.getTargetSymbol(atom.*, macho_file);
                     if (sym.isTlvInit(macho_file)) continue;

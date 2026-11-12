@@ -462,6 +462,18 @@ pub fn scanRelocs(self: Atom, macho_file: *MachO) !void {
     for (relocs) |rel| {
         if (try self.reportUndefSymbol(rel, macho_file)) continue;
 
+        if (rel.tag == .@"extern" and (rel.type == .subtractor or rel.meta.has_subtractor)) {
+            const symbol = rel.getTargetSymbol(self, macho_file);
+            if (symbol.flags.import) {
+                try macho_file.reportParseError2(
+                    self.getFile(macho_file).getIndex(),
+                    "{s}: 0x{x}: illegal difference relocation: imported symbol {s} does not have an address",
+                    .{ self.getName(macho_file), rel.offset, symbol.getName(macho_file) },
+                );
+                continue;
+            }
+        }
+
         switch (rel.type) {
             .branch => {
                 const symbol = rel.getTargetSymbol(self, macho_file);

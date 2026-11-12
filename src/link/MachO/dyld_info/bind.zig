@@ -306,6 +306,7 @@ pub const WeakBind = struct {
                 const seg = macho_file.segments.items[seg_id];
                 for (relocs) |rel| {
                     if (rel.type != .unsigned or rel.meta.length != 3 or rel.tag != .@"extern") continue;
+                    if (rel.meta.has_subtractor) continue;
                     const rel_offset = rel.offset - atom.off;
                     const addend = rel.addend + rel.getRelocAddend(cpu_arch);
                     const sym = rel.getTargetSymbol(atom.*, macho_file);
