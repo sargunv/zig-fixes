@@ -187,6 +187,9 @@
         .posix = .{
             .path = "posix",
         },
+        .pthread_rwlock_t_size = .{
+            .path = "pthread_rwlock_t_size",
+        },
         .elf2 = .{
             .path = "elf2",
         },
