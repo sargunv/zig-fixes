@@ -48,7 +48,7 @@ number	decision	priority	area	ref	title	reason
 37483	list	3	codegen	-	Codegen options for Linux kernel modules (retpoline/SLS regressed in #37404)	The regression is only on 0.18-dev (after #37404); the rest are feature requests for kernel-module codegen flags
 37481	list	2	codegen	-	Self hosted backend insert linktime dependencies on comptime only symbols	Self-hosted backend only; LLVM backend is correct.
 37479	list	2	linker	-	Self-host linker fails to resolve `_TLS_MODULE_BASE_` when static link `clang_rt.asan`	Self-hosted ELF linker with an external asan runtime; use_llvm works.
-37477	list	2	codegen	-	MacOS self-hosted backend freezes computer	Self-hosted aarch64 backend assertion and runaway memory; the backend is known to be incomplete
+37477	file	2	codegen	cb37477-aarch64-selfhosted-runaway-memory.md	MacOS self-hosted backend freezes computer	Reproduced on 0.17.1: build-exe of an empty main with -fno-llvm for aarch64-linux-musl grows past 19 GB in 20 s
 37475	list	3	compiler	-	Zcu: crashes rendering dependency loop from function parameter type to function	Not reproduced on 0.17.1 (renders the loop error); crash is in 0.18-dev error rendering code.
 37474	file	1	build-system	cb37474-shared-cache-manifest-deadlock.md	Deadlock when sharing a cache between concurrent builds	Reproduced on 0.17.1 (3/3): concurrent builds sharing a cache dir deadlock on manifest locks
 37471	skip	-	-	-	Drop support for `aarch64-watchos-ilp32`	Deprecation proposal, not a defect

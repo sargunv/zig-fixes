@@ -190,6 +190,9 @@
         .elf2 = .{
             .path = "elf2",
         },
+        .elf_bsd_archive = .{
+            .path = "elf_bsd_archive",
+        },
         .run_args = .{
             .path = "run_args",
         },

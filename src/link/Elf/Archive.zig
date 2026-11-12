@@ -52,6 +52,9 @@ pub fn parse(
     var strtab: std.ArrayList(u8) = .empty;
     defer strtab.deinit(gpa);
 
+    var bsd_name: std.ArrayList(u8) = .empty;
+    defer bsd_name.deinit(gpa);
+
     while (pos < size) {
         var hdr: elf.ar_hdr = undefined;
         {
@@ -78,8 +81,23 @@ pub fn parse(
         }
         if (hdr.isSymdef() or hdr.isSymdefSorted()) continue;
 
-        const name = if (hdr.name()) |name|
-            name
+        var obj_offset = pos;
+        var obj_len = obj_size;
+        const name = if (mem.startsWith(u8, &hdr.ar_name, "#1/")) name: {
+            // BSD format: the name is stored at the start of the member's data.
+            const name_len = try std.fmt.parseInt(u32, mem.trimEnd(u8, hdr.ar_name["#1/".len..], " "), 10);
+            if (name_len > obj_size) return error.InputOutput;
+            try bsd_name.resize(gpa, name_len);
+            const amt = try file.readPositionalAll(io, bsd_name.items, pos);
+            if (amt != name_len) return error.InputOutput;
+            obj_offset += name_len;
+            obj_len -= name_len;
+            const name = mem.sliceTo(bsd_name.items, 0);
+            if (mem.eql(u8, name, mem.trimEnd(u8, elf.SYMDEFNAME, " ")) or
+                mem.eql(u8, name, elf.SYMDEFSORTEDNAME)) continue;
+            break :name name;
+        } else if (hdr.name()) |name|
+            mem.trimEnd(u8, name, " ")
         else if (try hdr.nameOffset()) |off|
             stringTableLookup(strtab.items, off)
         else
@@ -91,8 +109,8 @@ pub fn parse(
                     .root_dir = path.root_dir,
                     .sub_path = try gpa.dupe(u8, path.sub_path),
                 },
-                .offset = pos,
-                .size = obj_size,
+                .offset = obj_offset,
+                .size = obj_len,
             },
             .path = Path.initCwd(try gpa.dupe(u8, name)),
             .file_handle = handle_index,

@@ -7311,7 +7311,29 @@ fn loadArchive(elf: *Elf, path: std.Build.Cache.Path, fr: *Io.File.Reader) (Load
             {
                 break :load_object;
             }
-            const member = header.name() orelse member: {
+            var member_offset = offset;
+            var member_size = size;
+            var bsd_name: []u8 = &.{};
+            defer gpa.free(bsd_name);
+            const member = if (std.mem.startsWith(u8, &header.ar_name, "#1/")) member: {
+                // BSD format: the name is stored at the start of the member's data.
+                const name_len = std.fmt.parseInt(
+                    u32,
+                    std.mem.trimEnd(u8, header.ar_name["#1/".len..], " "),
+                    10,
+                ) catch return diags.failParse(path, "bad member name length", .{});
+                if (name_len > size) return diags.failParse(path, "bad member name length", .{});
+                bsd_name = try r.readAlloc(gpa, name_len);
+                member_offset += name_len;
+                member_size -= name_len;
+                const member = std.mem.sliceTo(bsd_name, 0);
+                if (std.mem.eql(u8, member, std.mem.trimEnd(u8, std.elf.SYMDEFNAME, " ")) or
+                    std.mem.eql(u8, member, std.elf.SYMDEFSORTEDNAME))
+                {
+                    break :load_object;
+                }
+                break :member member;
+            } else if (header.name()) |member| std.mem.trimEnd(u8, member, " ") else member: {
                 const strtab_offset = header.nameOffset() catch |err| switch (err) {
                     error.Overflow => break :member error.Overflow,
                     error.InvalidCharacter => break :load_object,
@@ -7326,7 +7348,7 @@ fn loadArchive(elf: *Elf, path: std.Build.Cache.Path, fr: *Io.File.Reader) (Load
             } catch |err| switch (err) {
                 error.Overflow => return diags.failParse(path, "bad member name offset", .{}),
             };
-            try elf.loadObject(path, member, fr, .{ .offset = offset, .size = size });
+            try elf.loadObject(path, member, fr, .{ .offset = member_offset, .size = member_size });
         }
         try fr.seekTo(std.mem.alignForward(u64, offset + size, 2));
     } else |err| switch (err) {
