@@ -209,6 +209,37 @@ test "setTimestamps" {
     try expect(stat_new.mtime.nanoseconds < stat_old.mtime.nanoseconds);
 }
 
+test "concurrent with overaligned result" {
+    try checkOveralignedResult(16);
+    try checkOveralignedResult(64);
+}
+
+fn checkOveralignedResult(comptime alignment: usize) !void {
+    const global = struct {
+        const Result = struct { bytes: [1520]u8 align(alignment) };
+
+        fn fill(context: [14]u64) Result {
+            var result: Result = undefined;
+            @memset(&result.bytes, @truncate(context[0]));
+            return result;
+        }
+    };
+
+    const io = testing.io;
+    var context: [14]u64 = @splat(0xab);
+    var a = io.concurrent(global.fill, .{context}) catch |err| switch (err) {
+        error.ConcurrencyUnavailable => return error.SkipZigTest,
+    };
+    defer _ = a.cancel(io);
+    context[0] = 0xcd;
+    var b = io.concurrent(global.fill, .{context}) catch |err| switch (err) {
+        error.ConcurrencyUnavailable => return error.SkipZigTest,
+    };
+    defer _ = b.cancel(io);
+    try expect(mem.allEqual(u8, &a.await(io).bytes, 0xab));
+    try expect(mem.allEqual(u8, &b.await(io).bytes, 0xcd));
+}
+
 test "Group" {
     const io = testing.io;
 

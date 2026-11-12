@@ -50,6 +50,28 @@ Run the issue's reproduction with `zig run` (Debug, SafeAllocator); it should
 exit cleanly. Add a std test that awaits several futures with `align(16)` and
 `align(64)` results.
 
+## Fix
+
+`Future.create` in `lib/std/Io/Threaded.zig` now adds
+`max_result_misalignment = result_alignment.toByteUnits() -| @alignOf(Future)`
+before aligning the worst-case result offset, mirroring the slack it already
+adds for the context. The allocation's base is aligned to `@alignOf(Future)`,
+so its address modulo the result alignment is at most that slack, and the real
+result offset can no longer exceed the computed one.
+
+The test `concurrent with overaligned result` in `lib/std/Io/test.zig` spawns
+two concurrent futures with a 112-byte context and a 1520-byte result aligned
+to 16 and then 64, and checks the results. Without the fix it panics in
+`SafeAllocator` with `free of invalid memory [... len: 1696 (0x6a0) align: 8]
+or corrupted metadata` on aarch64-macos; with it, it passes. A standalone copy
+of the issue's reproduction also passes with
+`zig test repro.zig --zig-lib-dir lib`.
+
+`Group.Task.create` carries only a context, which already has its slack. The
+`Uring`, `Dispatch` and `Kqueue` backends lay futures out differently (on a
+fiber, with an assert on `Fiber.max_result_align`) and do not share this
+arithmetic.
+
 ## Notes
 
 As of this sweep, origin/master has the same code at
