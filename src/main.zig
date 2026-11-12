@@ -1992,10 +1992,15 @@ fn buildOutputType(
             var needed = false;
             var must_link = false;
             var file_ext: ?Compilation.FileExt = null;
+            var clang_target_mcpu: ?[]const u8 = null;
             while (it.has_next) {
                 it.next(io) catch |err| fatal("unable to parse command line parameters: {t}", .{err});
                 switch (it.zig_equivalent) {
-                    .target => target_arch_os_abi = it.only_arg, // example: -target riscv64-linux-unknown
+                    .target => { // example: -target riscv64-linux-unknown
+                        const clang_target = try clangTargetToZig(arena, it.only_arg);
+                        target_arch_os_abi = clang_target.arch_os_abi;
+                        clang_target_mcpu = clang_target.cpu;
+                    },
                     .o => {
                         // We handle -o /dev/null equivalent to -fno-emit-bin because
                         // otherwise our atomic rename into place will fail. This also
@@ -2622,6 +2627,8 @@ fn buildOutputType(
                     },
                 }
             }
+            // An explicit -mcpu or -march overrides the CPU the target implies.
+            if (target_mcpu == null) target_mcpu = clang_target_mcpu;
             // Parse linker args.
             var linker_args_it = ArgsIterator{
                 .args = linker_args.items,
@@ -5569,6 +5576,425 @@ pub const ClangArgIterator = struct {
 fn parseCodeModel(arg: []const u8) std.lang.CodeModel {
     return stringToEnum(std.lang.CodeModel, arg) orelse
         fatal("unsupported machine code model: {q}", .{arg});
+}
+
+const ClangTarget = struct {
+    arch_os_abi: []const u8,
+    /// The CPU Clang picks for the target where it is not Zig's baseline, as a
+    /// `-mcpu` value.
+    cpu: ?[]const u8 = null,
+};
+
+/// Clang accepts LLVM and GCC target triples, `arch-vendor-os-env`, and build
+/// tools pass them to `zig cc`. Translates the common ones to Zig's
+/// `arch-os-abi` and the CPU Clang picks for them. Returns `triple` unchanged
+/// when it already is a Zig target triple, or when it cannot be translated to
+/// the target Clang would use.
+fn clangTargetToZig(arena: Allocator, triple: []const u8) Allocator.Error!ClangTarget {
+    const unchanged: ClangTarget = .{ .arch_os_abi = triple };
+    if (std.Target.Query.parse(.{ .arch_os_abi = triple })) |_| return unchanged else |_| {}
+
+    var parts: [4][]const u8 = undefined;
+    var len: usize = 0;
+    var it = mem.splitScalar(u8, triple, '-');
+    while (it.next()) |part| : (len += 1) {
+        if (len == parts.len) return unchanged;
+        parts[len] = part;
+    }
+    if (len < 2) return unchanged;
+
+    const arch_names: std.StaticStringMap([]const u8) = .initComptime(.{
+        .{ "amd64", "x86_64" },
+        .{ "arm64", "aarch64" },
+        .{ "i386", "x86" },
+        .{ "i486", "x86" },
+        .{ "i586", "x86" },
+        .{ "i686", "x86" },
+    });
+    const os_names: std.StaticStringMap([]const u8) = .initComptime(.{
+        .{ "darwin", "macos" },
+        .{ "elf", "freestanding" },
+        .{ "macosx", "macos" },
+        .{ "mingw32", "windows" },
+        .{ "none", "freestanding" },
+        .{ "unknown", "freestanding" },
+        .{ "wasip1", "wasi" },
+        .{ "xros", "visionos" },
+    });
+    const vendors: std.StaticStringMap(void) = .initComptime(.{
+        .{"apple"}, .{"pc"}, .{"unknown"}, .{"w64"},
+    });
+
+    const vendor_len: usize = @intFromBool(len == 4 or (len == 3 and vendors.has(parts[1])));
+    const os_text = parts[1 + vendor_len];
+    const env_text: ?[]const u8 = if (len - vendor_len == 3) parts[len - 1] else null;
+
+    var os_name = os_text;
+    var os_version: []const u8 = "";
+    if (stringToEnum(std.Target.Os.Tag, os_text) == null and !os_names.has(os_text)) {
+        // LLVM appends the version to the name, as in `macosx11.0`.
+        const i = mem.indexOfAny(u8, os_text, "0123456789") orelse os_text.len;
+        os_name = os_text[0..i];
+        os_version = os_text[i..];
+    }
+    // A Darwin version is the kernel's. Map it to the macOS version as LLVM does.
+    if (mem.eql(u8, os_name, "darwin") and os_version.len > 0) {
+        const major_text = os_version[0 .. mem.indexOfScalar(u8, os_version, '.') orelse os_version.len];
+        const major = std.fmt.parseUnsigned(u32, major_text, 10) catch return unchanged;
+        if (major < 4) return unchanged;
+        os_version = if (major < 20)
+            try std.fmt.allocPrint(arena, "10.{d}", .{major - 4})
+        else
+            try std.fmt.allocPrint(arena, "{d}.0", .{major - 9});
+    }
+
+    var abi_name: ?[]const u8 = if (mem.eql(u8, os_name, "mingw32")) "gnu" else null;
+    var abi_version: []const u8 = "";
+    if (env_text) |env| {
+        // LLVM appends the Android API level to the environment, as in `android21`.
+        const i = if (stringToEnum(std.Target.Abi, env) != null)
+            env.len
+        else
+            mem.indexOfAny(u8, env, "0123456789") orelse env.len;
+        abi_name = env[0..i];
+        abi_version = env[i..];
+        // `elf` names the object format, not an environment.
+        if (mem.eql(u8, env, "elf")) abi_name = null;
+        // Mac Catalyst is iOS with the `macabi` environment.
+        if (mem.eql(u8, env, "macabi") and mem.eql(u8, os_name, "ios")) {
+            os_name = "maccatalyst";
+            abi_name = null;
+        }
+    }
+    os_name = os_names.get(os_name) orelse os_name;
+
+    // An Arm sub-architecture selects the CPU, and M-profile ones select Thumb.
+    const arm_arch = parseClangArmArch(parts[0]);
+
+    // Without an environment Clang assumes glibc on Linux and MSVC on
+    // Windows, where Zig's defaults are musl and MinGW.
+    const has_env = abi_name != null;
+    if (!has_env) {
+        if (mem.eql(u8, os_name, "linux")) abi_name = "gnu";
+        if (mem.eql(u8, os_name, "windows")) abi_name = "msvc";
+    }
+    const arch_name = if (arm_arch) |arm| switch (arm.sub.profile == .m or arm.sub.profile == .m_baseline or
+        mem.eql(u8, os_name, "windows")) {
+        true => if (arm.big_endian) "thumbeb" else "thumb",
+        false => if (arm.big_endian) "armeb" else "arm",
+    } else arch_names.get(parts[0]) orelse parts[0];
+
+    var result: std.ArrayList(u8) = .empty;
+    try result.print(arena, "{s}-{s}", .{ arch_name, os_name });
+    if (os_version.len > 0) try result.print(arena, ".{s}", .{os_version});
+    if (abi_name) |abi| try result.print(arena, "-{s}", .{abi});
+    if (abi_version.len > 0) try result.print(arena, ".{s}", .{abi_version});
+
+    const query = std.Target.Query.parse(.{ .arch_os_abi = result.items }) catch return unchanged;
+    // `native` is not an LLVM triple component.
+    if (query.cpu_arch == null or query.os_tag == null) return unchanged;
+    const cpu = clangDefaultCpu(arena, query, has_env, arm_arch) catch |err| switch (err) {
+        error.OutOfMemory => |e| return e,
+        error.Unsupported => return unchanged,
+    };
+    return .{ .arch_os_abi = result.items, .cpu = cpu };
+}
+
+const ClangArmArch = struct {
+    big_endian: bool,
+    sub: ArmSubArch,
+
+    const ArmSubArch = struct {
+        /// The CPU and features Clang picks for the sub-architecture, or
+        /// null for its per-OS default.
+        cpu: ?[]const u8,
+        version: u8,
+        profile: enum { a, r, m, m_baseline } = .a,
+        /// The floating-point unit Clang adds for a hard-float ABI, where the
+        /// CPU model has none.
+        hard_float: []const u8 = "",
+        /// Plain ARMv6 and ARMv7-A, whose CPU some OSes override.
+        plain: bool = false,
+    };
+};
+
+/// Parses an LLVM Arm or Thumb architecture name, such as `armv7em` or
+/// `thumbebv6m`, as LLVM's triple parser does.
+fn parseClangArmArch(text: []const u8) ?ClangArmArch {
+    const S = ClangArmArch.ArmSubArch;
+    const sub_archs: std.StaticStringMap(S) = .initComptime(.{
+        .{ "", S{ .cpu = null, .version = 0 } },
+        .{ "v4", S{ .cpu = "strongarm+v4", .version = 4 } },
+        .{ "v4t", S{ .cpu = "arm7tdmi+v4t", .version = 4 } },
+        .{ "v5", S{ .cpu = "arm10tdmi+v5t", .version = 5 } },
+        .{ "v5t", S{ .cpu = "arm10tdmi+v5t", .version = 5 } },
+        .{ "v5e", S{ .cpu = "arm1022e+v5te+dsp", .version = 5 } },
+        .{ "v5te", S{ .cpu = "arm1022e+v5te+dsp", .version = 5 } },
+        .{ "v5tej", S{ .cpu = "arm1022e+v5te+dsp", .version = 5 } },
+        .{ "v6", S{ .cpu = "arm1136jf_s+v6", .version = 6, .plain = true } },
+        .{ "v6j", S{ .cpu = "arm1136jf_s+v6", .version = 6, .plain = true } },
+        .{ "v6k", S{ .cpu = "mpcore+v6k+dsp", .version = 6 } },
+        .{ "v6hl", S{ .cpu = "mpcore+v6k+dsp", .version = 6 } },
+        .{ "v6kz", S{ .cpu = "arm1176jzf_s+v6kz+dsp", .version = 6 } },
+        .{ "v6z", S{ .cpu = "arm1176jzf_s+v6kz+dsp", .version = 6 } },
+        .{ "v6zk", S{ .cpu = "arm1176jzf_s+v6kz+dsp", .version = 6 } },
+        .{ "v6t2", S{ .cpu = "arm1156t2_s+v6t2", .version = 6 } },
+        .{ "v6m", S{ .cpu = "cortex_m0+v6m", .version = 6, .profile = .m_baseline } },
+        .{ "v6sm", S{ .cpu = "cortex_m0+v6m", .version = 6, .profile = .m_baseline } },
+        .{ "v7", S{ .cpu = "generic+v7a", .version = 7, .plain = true } },
+        .{ "v7a", S{ .cpu = "generic+v7a", .version = 7, .plain = true } },
+        .{ "v7l", S{ .cpu = "generic+v7a", .version = 7, .plain = true } },
+        .{ "v7hl", S{ .cpu = "generic+v7a", .version = 7, .plain = true } },
+        .{ "v7ve", S{ .cpu = "generic+v7ve", .version = 7 } },
+        .{ "v7r", S{ .cpu = "cortex_r4+v7r", .version = 7, .profile = .r } },
+        .{ "v7m", S{ .cpu = "cortex_m3+v7m", .version = 7, .profile = .m } },
+        .{ "v7em", S{ .cpu = "cortex_m4+v7em", .version = 7, .profile = .m, .hard_float = "+vfp4d16sp" } },
+        .{ "v8", S{ .cpu = "generic+v8a", .version = 8 } },
+        .{ "v8a", S{ .cpu = "generic+v8a", .version = 8 } },
+        .{ "v8l", S{ .cpu = "generic+v8a", .version = 8 } },
+        .{ "v8.1a", S{ .cpu = "generic+v8_1a", .version = 8 } },
+        .{ "v8.2a", S{ .cpu = "generic+v8_2a", .version = 8 } },
+        .{ "v8.3a", S{ .cpu = "generic+v8_3a", .version = 8 } },
+        .{ "v8.4a", S{ .cpu = "generic+v8_4a", .version = 8 } },
+        .{ "v8.5a", S{ .cpu = "generic+v8_5a", .version = 8 } },
+        .{ "v8.6a", S{ .cpu = "generic+v8_6a", .version = 8 } },
+        .{ "v8.7a", S{ .cpu = "generic+v8_7a", .version = 8 } },
+        .{ "v8.8a", S{ .cpu = "generic+v8_8a", .version = 8 } },
+        .{ "v8.9a", S{ .cpu = "generic+v8_9a", .version = 8 } },
+        .{ "v9", S{ .cpu = "generic+v9a", .version = 9 } },
+        .{ "v9a", S{ .cpu = "generic+v9a", .version = 9 } },
+        .{ "v9.1a", S{ .cpu = "generic+v9_1a", .version = 9 } },
+        .{ "v9.2a", S{ .cpu = "generic+v9_2a", .version = 9 } },
+        .{ "v9.3a", S{ .cpu = "generic+v9_3a", .version = 9 } },
+        .{ "v9.4a", S{ .cpu = "generic+v9_4a", .version = 9 } },
+        .{ "v9.5a", S{ .cpu = "generic+v9_5a", .version = 9 } },
+        .{ "v9.6a", S{ .cpu = "generic+v9_6a", .version = 9 } },
+        .{ "v9.7a", S{ .cpu = "generic+v9_7a", .version = 9 } },
+        .{ "v8r", S{ .cpu = "generic+v8r", .version = 8, .profile = .r } },
+        .{ "v8m.base", S{ .cpu = "generic+v8m", .version = 8, .profile = .m_baseline } },
+        .{ "v8m.main", S{ .cpu = "generic+v8m_main", .version = 8, .profile = .m, .hard_float = "+fp_armv8d16" } },
+        .{ "v8.1m.main", S{ .cpu = "generic+v8_1m_main", .version = 8, .profile = .m, .hard_float = "+fp_armv8d16sp+fullfp16" } },
+    });
+    var rest = mem.cutPrefix(u8, text, "arm") orelse mem.cutPrefix(u8, text, "thumb") orelse return null;
+    var big_endian = false;
+    if (mem.cutPrefix(u8, rest, "eb") orelse mem.cutSuffix(u8, rest, "eb")) |r| {
+        big_endian = true;
+        rest = r;
+    }
+    return .{ .big_endian = big_endian, .sub = sub_archs.get(rest) orelse return null };
+}
+
+/// The CPU Clang picks for a translated target, as a `-mcpu` value, or null
+/// where it is Zig's baseline. `error.Unsupported` for a target whose Clang
+/// defaults are not matched here.
+fn clangDefaultCpu(
+    arena: Allocator,
+    query: std.Target.Query,
+    has_env: bool,
+    arm_arch: ?ClangArmArch,
+) error{ OutOfMemory, Unsupported }!?[]const u8 {
+    const arch = query.cpu_arch.?;
+    const os = query.os_tag.?;
+    const abi = query.abi;
+    if (arm_arch) |arm| return try clangArmCpu(arena, os, abi, has_env, arm);
+    const android = abi != null and abi.?.isAndroid();
+    return switch (arch) {
+        .x86 => switch (os) {
+            .freebsd => "i686",
+            .netbsd => "i486",
+            .openbsd => "i586",
+            .linux => if (android) "i686+mmx+ssse3" else null,
+            .windows, .freestanding => null,
+            else => error.Unsupported,
+        },
+        .x86_64 => switch (os) {
+            // macOS 10.12 dropped the Macs older than Penryn.
+            .macos => if (query.os_version_min != null and
+                query.os_version_min.?.semver.order(.{ .major = 10, .minor = 12, .patch = 0 }) == .lt) "core2" else "penryn",
+            .ios, .tvos, .maccatalyst => "core2",
+            .linux => if (android) "x86_64+sse4_2+popcnt+cx16" else null,
+            .freebsd, .netbsd, .openbsd, .windows, .freestanding => null,
+            else => error.Unsupported,
+        },
+        .aarch64 => switch (os) {
+            .ios, .tvos, .visionos => if (abi == .simulator) "apple_m1" else if (os == .visionos) "apple_a12" else null,
+            .linux => if (android) "generic+fix_cortex_a53_835769+outline_atomics" else null,
+            .macos, .maccatalyst, .freebsd, .windows, .freestanding => null,
+            else => error.Unsupported,
+        },
+        .riscv32, .riscv64 => switch (os) {
+            .freestanding => if (arch == .riscv32) "generic_rv32+i+m+a+c" else "generic_rv64+i+m+a+c",
+            .linux => if (android) error.Unsupported else null,
+            .freebsd => null,
+            else => error.Unsupported,
+        },
+        .wasm32 => switch (os) {
+            .freestanding, .wasi, .emscripten => "generic",
+            else => error.Unsupported,
+        },
+        .loongarch64 => switch (os) {
+            .linux => null,
+            else => error.Unsupported,
+        },
+        else => error.Unsupported,
+    };
+}
+
+fn clangArmCpu(
+    arena: Allocator,
+    os: std.Target.Os.Tag,
+    abi: ?std.Target.Abi,
+    has_env: bool,
+    arm: ClangArmArch,
+) error{ OutOfMemory, Unsupported }![]const u8 {
+    // Outside Windows, Clang uses the EABI only for an EABI environment, and
+    // otherwise a non-EABI ABI that Zig does not support.
+    if (!has_env) return error.Unsupported;
+    switch (abi.?) {
+        .eabi, .eabihf, .gnueabi, .gnueabihf, .musleabi, .musleabihf, .androideabi => {
+            if (os == .windows) return error.Unsupported;
+        },
+        .msvc, .gnu => if (os != .windows) return error.Unsupported,
+        else => return error.Unsupported,
+    }
+    var version = arm.sub.version;
+    const cpu = switch (os) {
+        .linux, .freestanding => arm.sub.cpu,
+        .freebsd, .netbsd => if (!arm.sub.plain) arm.sub.cpu else switch (version) {
+            6 => "arm1176jzf_s+v6kz+dsp",
+            7 => "cortex_a8+v7a",
+            else => unreachable,
+        },
+        .windows => if (arm.sub.plain and version == 7) "cortex_a9+v7a" else return error.Unsupported,
+        else => return error.Unsupported,
+    } orelse if (os == .netbsd) cpu: {
+        // Without a sub-architecture Clang picks a CPU from the OS and environment.
+        version = 5;
+        break :cpu "arm1022e+v5te+dsp";
+    } else if (abi.?.float() == .hard) cpu: {
+        version = 6;
+        break :cpu "arm1176jzf_s+v6kz+dsp";
+    } else cpu: {
+        version = 4;
+        break :cpu "arm7tdmi+v4t";
+    };
+    // For a soft-float environment on a CPU with a floating-point unit Clang
+    // uses `softfp`, which has the same calling convention as Zig's soft float.
+    const hard_float = if (abi.?.float() == .hard) arm.sub.hard_float else "";
+    // Clang assumes that unaligned accesses fault before ARMv7, and on
+    // M-profile cores without the Main Extension.
+    const strict_align = arm.sub.profile == .m_baseline or version < @as(u8, if (os == .netbsd) 6 else 7);
+    if (hard_float.len == 0 and !strict_align) return cpu;
+    return std.fmt.allocPrint(arena, "{s}{s}{s}", .{ cpu, hard_float, if (strict_align) "+strict_align" else "" });
+}
+
+test clangTargetToZig {
+    var arena_state: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    const cases = [_]struct { []const u8, []const u8, ?[]const u8 }{
+        // Zig target triples are unchanged.
+        .{ "x86_64-linux-gnu", "x86_64-linux-gnu", null },
+        .{ "x86_64-linux-gnu.2.17", "x86_64-linux-gnu.2.17", null },
+        .{ "x86_64-linux", "x86_64-linux", null },
+        .{ "arm-linux-gnueabihf", "arm-linux-gnueabihf", null },
+        .{ "aarch64-macos.11.0", "aarch64-macos.11.0", null },
+        .{ "native", "native", null },
+        // LLVM and GCC triples.
+        .{ "x86_64-unknown-linux-gnu", "x86_64-linux-gnu", null },
+        .{ "x86_64-pc-linux-gnu", "x86_64-linux-gnu", null },
+        .{ "x86_64--linux-gnu", "x86_64-linux-gnu", null },
+        .{ "x86_64-unknown-linux-gnux32", "x86_64-linux-gnux32", null },
+        .{ "aarch64-unknown-linux-musl", "aarch64-linux-musl", null },
+        .{ "riscv64-unknown-linux-gnu", "riscv64-linux-gnu", null },
+        .{ "loongarch64-unknown-linux-gnu", "loongarch64-linux-gnu", null },
+        .{ "i686-unknown-linux-gnu", "x86-linux-gnu", null },
+        .{ "i686-unknown-freebsd", "x86-freebsd", "i686" },
+        .{ "x86_64-linux-android21", "x86_64-linux-android.21", "x86_64+sse4_2+popcnt+cx16" },
+        .{ "aarch64-linux-android21", "aarch64-linux-android.21", "generic+fix_cortex_a53_835769+outline_atomics" },
+        .{ "x86_64-unknown-freebsd14.0", "x86_64-freebsd.14.0", null },
+        .{ "x86_64-pc-windows-msvc", "x86_64-windows-msvc", null },
+        .{ "x86_64-w64-mingw32", "x86_64-windows-gnu", null },
+        .{ "wasm32-unknown-unknown", "wasm32-freestanding", "generic" },
+        .{ "wasm32-wasip1", "wasm32-wasi", "generic" },
+        .{ "wasm32-unknown-emscripten", "wasm32-emscripten", "generic" },
+        // Apple.
+        .{ "aarch64-apple-darwin", "aarch64-macos", null },
+        .{ "x86_64-apple-darwin23.1.0", "x86_64-macos.14.0", "penryn" },
+        .{ "x86_64-apple-darwin15", "x86_64-macos.10.11", "core2" },
+        .{ "arm64-apple-macosx11.0.0", "aarch64-macos.11.0.0", null },
+        .{ "arm64-apple-ios17.0-simulator", "aarch64-ios.17.0-simulator", "apple_m1" },
+        .{ "arm64-apple-xros1.0", "aarch64-visionos.1.0", "apple_a12" },
+        .{ "aarch64-apple-ios14.0-macabi", "aarch64-maccatalyst.14.0", null },
+        .{ "x86_64-apple-ios14.0-macabi", "x86_64-maccatalyst.14.0", "core2" },
+        // Without an environment Clang assumes glibc on Linux and MSVC on Windows.
+        .{ "x86_64-unknown-linux", "x86_64-linux-gnu", null },
+        .{ "aarch64-unknown-linux", "aarch64-linux-gnu", null },
+        .{ "i686-unknown-linux", "x86-linux-gnu", null },
+        .{ "x86_64-pc-windows", "x86_64-windows-msvc", null },
+        // Bare metal.
+        .{ "aarch64-none-elf", "aarch64-freestanding", null },
+        .{ "riscv64-unknown-elf", "riscv64-freestanding", "generic_rv64+i+m+a+c" },
+        .{ "riscv32-unknown-elf", "riscv32-freestanding", "generic_rv32+i+m+a+c" },
+        .{ "arm-none-eabi", "arm-freestanding-eabi", "arm7tdmi+v4t+strict_align" },
+        .{ "arm-none-eabihf", "arm-freestanding-eabihf", "arm1176jzf_s+v6kz+dsp+strict_align" },
+        // Arm sub-architectures.
+        .{ "arm-unknown-linux-gnueabihf", "arm-linux-gnueabihf", "arm1176jzf_s+v6kz+dsp+strict_align" },
+        .{ "armv6-unknown-linux-gnueabihf", "arm-linux-gnueabihf", "arm1136jf_s+v6+strict_align" },
+        .{ "armv6k-unknown-linux-gnueabihf", "arm-linux-gnueabihf", "mpcore+v6k+dsp+strict_align" },
+        .{ "armv7-unknown-linux-gnueabihf", "arm-linux-gnueabihf", "generic+v7a" },
+        .{ "armv7l-unknown-linux-gnueabihf", "arm-linux-gnueabihf", "generic+v7a" },
+        .{ "armv8a-unknown-linux-gnueabihf", "arm-linux-gnueabihf", "generic+v8a" },
+        .{ "armv7-unknown-freebsd14.0-gnueabihf", "arm-freebsd.14.0-gnueabihf", "cortex_a8+v7a" },
+        .{ "armebv7-unknown-linux-gnueabihf", "armeb-linux-gnueabihf", "generic+v7a" },
+        .{ "armv7r-none-eabihf", "arm-freestanding-eabihf", "cortex_r4+v7r" },
+        .{ "armv7em-none-eabihf", "thumb-freestanding-eabihf", "cortex_m4+v7em+vfp4d16sp" },
+        .{ "thumbv7em-none-eabihf", "thumb-freestanding-eabihf", "cortex_m4+v7em+vfp4d16sp" },
+        .{ "thumbv7m-none-eabi", "thumb-freestanding-eabi", "cortex_m3+v7m" },
+        .{ "thumbv6m-none-eabi", "thumb-freestanding-eabi", "cortex_m0+v6m+strict_align" },
+        .{ "thumbv8m.main-none-eabihf", "thumb-freestanding-eabihf", "generic+v8m_main+fp_armv8d16" },
+        .{ "thumbv7-pc-windows-msvc", "thumb-windows-msvc", "cortex_a9+v7a" },
+        // A soft-float environment on a CPU with a floating-point unit is
+        // Clang's `softfp`, which calls functions like Zig's soft float.
+        .{ "armv7a-linux-androideabi21", "arm-linux-androideabi.21", "generic+v7a" },
+        .{ "armv7-unknown-linux-gnueabi", "arm-linux-gnueabi", "generic+v7a" },
+        .{ "armv6-unknown-linux-gnueabi", "arm-linux-gnueabi", "arm1136jf_s+v6+strict_align" },
+        .{ "thumbv7em-none-eabi", "thumb-freestanding-eabi", "cortex_m4+v7em" },
+        .{ "thumbv8m.main-none-eabi", "thumb-freestanding-eabi", "generic+v8m_main" },
+        // Triples that cannot be translated to the target Clang uses are unchanged.
+        .{ "x86_64-bogus-gnu", "x86_64-bogus-gnu", null },
+        .{ "bogus-unknown-linux-gnu", "bogus-unknown-linux-gnu", null },
+        .{ "x86_64-unknown-linux-gnu-extra", "x86_64-unknown-linux-gnu-extra", null },
+        .{ "x86_64", "x86_64", null },
+        .{ "native-unknown-linux-gnu", "native-unknown-linux-gnu", null },
+        .{ "x86_64-unknown-native-gnu", "x86_64-unknown-native-gnu", null },
+        .{ "x86_64-apple-native", "x86_64-apple-native", null },
+        .{ "native-apple-darwin", "native-apple-darwin", null },
+        .{ "armv7-unknown-native-gnueabihf", "armv7-unknown-native-gnueabihf", null },
+        .{ "-unknown-linux-gnu", "-unknown-linux-gnu", null },
+        .{ "x86_64-unknown--gnu", "x86_64-unknown--gnu", null },
+        .{ "x86_64-unknown-linux-", "x86_64-unknown-linux-", null },
+        .{ "", "", null },
+        .{ "riscv64gc-unknown-linux-gnu", "riscv64gc-unknown-linux-gnu", null },
+        .{ "powerpc64le-unknown-linux-gnu", "powerpc64le-unknown-linux-gnu", null },
+        .{ "armv2-unknown-linux-gnueabi", "armv2-unknown-linux-gnueabi", null },
+        .{ "arm-unknown-linux", "arm-unknown-linux", null },
+        .{ "armv7-unknown-openbsd-gnueabihf", "armv7-unknown-openbsd-gnueabihf", null },
+        .{ "armv7-unknown-linux-gnu", "armv7-unknown-linux-gnu", null },
+        .{ "armv7-unknown-linux-musl", "armv7-unknown-linux-musl", null },
+        .{ "arm-unknown-linux-gnu", "arm-unknown-linux-gnu", null },
+        .{ "armv7-unknown-linux-ohos", "armv7-unknown-linux-ohos", null },
+    };
+    for (cases) |case| {
+        const result = try clangTargetToZig(arena, case[0]);
+        try std.testing.expectEqualStrings(case[1], result.arch_os_abi);
+        if (case[2]) |cpu| {
+            try std.testing.expectEqualStrings(cpu, result.cpu orelse "");
+        } else {
+            try std.testing.expectEqual(null, result.cpu);
+        }
+    }
 }
 
 const usage_ast_check =
