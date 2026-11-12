@@ -193,6 +193,9 @@
         .run_args = .{
             .path = "run_args",
         },
+        .pthread_rwlock_t_size = .{
+            .path = "pthread_rwlock_t_size",
+        },
     },
     .paths = .{
         "build.zig",

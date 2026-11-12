@@ -8298,7 +8298,13 @@ pub const pthread_rwlock_t = switch (native_os) {
             else => @compileError("impossible pointer size"),
         },
         else => extern struct {
-            data: [56]u8 align(@alignOf(usize)) = @splat(0),
+            data: [data_len]u8 align(@alignOf(usize)) = @splat(0),
+
+            const data_len = if (@sizeOf(usize) == 8) 56 else switch (native_arch) {
+                .riscv32 => if (native_abi.isGnu()) 48 else 32,
+                .x86_64 => if (native_abi == .gnux32) 44 else 32,
+                else => 32,
+            };
         },
     },
     .driverkit, .ios, .maccatalyst, .macos, .tvos, .visionos, .watchos => extern struct {
