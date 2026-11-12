@@ -222,6 +222,7 @@ pub const want_aeabi = switch (builtin.abi) {
     .gnueabihf,
     .android,
     .androideabi,
+    .ohoseabi,
     => builtin.cpu.arch.isArm(),
     else => false,
 };
