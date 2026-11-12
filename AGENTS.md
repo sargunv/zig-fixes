@@ -49,6 +49,10 @@ line are merges of upstream. That keeps
 `git log --first-parent --no-merges upstream/0.17.x..fork/0.17.x` an exact
 list of what we carry.
 
+A fix is proposed as a pull request from `fix/<slug>` to the line. Keep the
+pull request at exactly one commit, amending it as review goes on, so that the
+squash merge keeps that commit's message and trailers.
+
 ## The backlog
 
 `defects/README.md` describes the layout. In short: one markdown file per
@@ -181,11 +185,32 @@ none of those conflicts are ours to resolve. Start a new line instead:
 
 ## Building and testing
 
-- A fix that only changes `lib/` can be exercised with upstream's release
-  binary of the same version and this checkout's library directory:
-  `zig <command> --zig-lib-dir <checkout>/lib`, or `ZIG_LIB_DIR` in the
-  environment.
-- A fix that changes `src/` needs a compiler build. Upstream's own recipe is
-  in `ci/<target>-release.sh`: it downloads a prebuilt LLVM, Clang and LLD
-  bundle and builds with CMake. No build of this fork has been set up yet.
-  Whoever makes the first `src/` fix sets one up and records it here.
+`mise install` provides upstream's release of this line as `zig`.
+
+- **A fix that only changes `lib/`** can be exercised with that release
+  binary and this checkout's library directory:
+  `zig <command> --zig-lib-dir lib`. `zig build` does not take that flag; set
+  `ZIG_LIB_DIR` in the environment instead. Code under `lib/` that is compiled
+  into the compiler itself (`lib/std/zig/`, `lib/std/Target*`, and whatever
+  else `src/` imports) only takes effect in a compiler build.
+- **A fix that changes `src/`** needs a compiler build. `mise run build`
+  downloads upstream's prebuilt LLVM, Clang and LLD for this line on first
+  use, builds `zig-out/bin/zig` with the release binary, and prints its
+  version. It takes an optimization mode, `ReleaseSafe` by default;
+  `mise run build Debug` also enables the compiler's debug commands. The
+  built binary uses this checkout's `lib/`, so a later change under `lib/`
+  needs no rebuild. A build takes a few minutes and about 10 GB of memory,
+  and ends with a harmless complaint that it used more memory than declared.
+- **The version** of a build is upstream's with build metadata naming the
+  fork's commit: `0.17.1+fixes.<short sha>`. It compares equal to upstream's
+  release everywhere a version is ordered.
+- **Tests** live where upstream keeps them: `test/behavior/` for language
+  behavior, `test/cases/` for compile errors, `test/c_abi/`, `test/link/`,
+  `test/standalone/`, and `test` blocks beside the code in `lib/std/`.
+  - One std test: `zig test lib/std/std.zig --zig-lib-dir lib --test-filter
+    <name>`, with the release binary or the built one.
+  - A suite: `mise run zig-build -- <step>`. `mise run zig-build -- -l` lists
+    the steps, such as `test-behavior`, `test-c-abi` and `test-link`. Plain
+    `zig build` fails here on the version check; the task supplies the
+    version. `-Dtest-filter=<text>` and `-Dtest-target-filter=<triple>`
+    narrow a suite, which is otherwise long.

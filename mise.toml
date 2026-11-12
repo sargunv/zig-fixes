@@ -1,13 +1,73 @@
-# Tools for working on this fork. Versions are pinned here; there is no
-# lockfile.
+# Tools and tasks for working on this fork. Versions are pinned here; there is
+# no lockfile.
 
 [settings]
 lockfile = false
 
+[vars]
+# The upstream release this line is based on.
+upstream_version = "0.17.1"
+# Upstream's prebuilt LLVM, Clang and LLD for this line, as named in ci/.
+devkit_version = "0.17.0-dev.203+073889523"
+
 [tools]
-# Upstream's release of the line this branch tracks. It runs `zig fmt`, and it
+# Upstream's release of this line. It builds the compiler, runs `zig fmt`, and
 # exercises fixes under lib/ through `--zig-lib-dir`.
-zig = "0.17.1"
-# For building the compiler itself. See ci/ for upstream's recipe.
-cmake = "4.4.5"
-ninja = "1.13.2"
+zig = "{{vars.upstream_version}}"
+
+[tasks.devkit]
+description = "Download upstream's prebuilt LLVM, Clang and LLD for this host; print its path"
+quiet = true
+run = '''
+set -eu
+case "$(uname -s)-$(uname -m)" in
+  Darwin-arm64) target=aarch64-macos-none ;;
+  Darwin-x86_64) target=x86_64-macos-none ;;
+  Linux-x86_64) target=x86_64-linux-musl ;;
+  Linux-aarch64) target=aarch64-linux-musl ;;
+  *) echo "no devkit known for $(uname -s)-$(uname -m)" >&2; exit 1 ;;
+esac
+name="zig+llvm+lld+clang-$target-{{vars.devkit_version}}"
+root="${XDG_CACHE_HOME:-$HOME/.cache}/zig-fixes/devkit"
+if [ ! -d "$root/$name" ]; then
+  mkdir -p "$root"
+  tmp="$(mktemp -d "$root/.download.XXXXXX")"
+  trap 'rm -rf "$tmp"' EXIT
+  curl --fail --location --silent --show-error \
+    --output "$tmp/devkit.tar.xz" "https://ziglang.org/deps/$name.tar.xz" >&2
+  tar -xf "$tmp/devkit.tar.xz" -C "$tmp"
+  # Another checkout may have finished the same download first.
+  mv "$tmp/$name" "$root/$name" 2>/dev/null || true
+fi
+echo "$root/$name"
+'''
+
+[tasks.zig-build]
+description = "Run `zig build` on this checkout; arguments pass through, e.g. `mise run zig-build -- test-fmt`"
+run = '''
+set -eu
+devkit="$(mise run devkit)"
+# Upstream's build refuses a commit that sits after a release tag unless the
+# version is given. Build metadata keeps the version equal to upstream's for
+# every comparison, and says which commit of the fork this is.
+version="{{vars.upstream_version}}+fixes.$(git rev-parse --short=9 HEAD)"
+# The release compiler builds this checkout's src/ against this checkout's
+# lib/. -Dno-lib leaves lib/ out of zig-out/, so the built binary also uses
+# this checkout's lib/ and a change there needs no rebuild.
+ZIG_LIB_DIR="$PWD/lib" zig build \
+  --search-prefix "$devkit" \
+  -Dstatic-llvm \
+  -Duse-zig-libcxx \
+  -Dno-lib \
+  -Dversion-string="$version" \
+  "$@"
+'''
+
+[tasks.build]
+description = "Build the compiler into zig-out/, reporting <upstream version>+fixes.<commit>"
+usage = 'arg "[optimize]" help="Debug, ReleaseSafe, ReleaseFast or ReleaseSmall" default="ReleaseSafe"'
+run = '''
+set -eu
+mise run zig-build -- -Doptimize="${usage_optimize}"
+zig-out/bin/zig version
+'''
