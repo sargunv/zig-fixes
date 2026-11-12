@@ -5691,6 +5691,8 @@ fn clangTargetToZig(arena: Allocator, triple: []const u8) Allocator.Error!ClangT
     if (abi_version.len > 0) try result.print(arena, ".{s}", .{abi_version});
 
     const query = std.Target.Query.parse(.{ .arch_os_abi = result.items }) catch return unchanged;
+    // `native` is not an LLVM triple component.
+    if (query.cpu_arch == null or query.os_tag == null) return unchanged;
     const cpu = clangDefaultCpu(arena, query, has_env, arm_arch) catch |err| switch (err) {
         error.OutOfMemory => |e| return e,
         error.Unsupported => return unchanged,
@@ -5708,8 +5710,9 @@ const ClangArmArch = struct {
         cpu: ?[]const u8,
         version: u8,
         profile: enum { a, r, m, m_baseline } = .a,
-        /// Whether the CPU has a floating-point unit by default.
-        fpu: bool = false,
+        /// The floating-point unit Clang adds for a hard-float ABI, where the
+        /// CPU model has none.
+        hard_float: []const u8 = "",
         /// Plain ARMv6 and ARMv7-A, whose CPU some OSes override.
         plain: bool = false,
     };
@@ -5728,49 +5731,49 @@ fn parseClangArmArch(text: []const u8) ?ClangArmArch {
         .{ "v5e", S{ .cpu = "arm1022e+v5te+dsp", .version = 5 } },
         .{ "v5te", S{ .cpu = "arm1022e+v5te+dsp", .version = 5 } },
         .{ "v5tej", S{ .cpu = "arm1022e+v5te+dsp", .version = 5 } },
-        .{ "v6", S{ .cpu = "arm1136jf_s+v6", .version = 6, .fpu = true, .plain = true } },
-        .{ "v6j", S{ .cpu = "arm1136jf_s+v6", .version = 6, .fpu = true, .plain = true } },
-        .{ "v6k", S{ .cpu = "mpcore+v6k+dsp", .version = 6, .fpu = true } },
-        .{ "v6hl", S{ .cpu = "mpcore+v6k+dsp", .version = 6, .fpu = true } },
-        .{ "v6kz", S{ .cpu = "arm1176jzf_s+v6kz+dsp", .version = 6, .fpu = true } },
-        .{ "v6z", S{ .cpu = "arm1176jzf_s+v6kz+dsp", .version = 6, .fpu = true } },
-        .{ "v6zk", S{ .cpu = "arm1176jzf_s+v6kz+dsp", .version = 6, .fpu = true } },
+        .{ "v6", S{ .cpu = "arm1136jf_s+v6", .version = 6, .plain = true } },
+        .{ "v6j", S{ .cpu = "arm1136jf_s+v6", .version = 6, .plain = true } },
+        .{ "v6k", S{ .cpu = "mpcore+v6k+dsp", .version = 6 } },
+        .{ "v6hl", S{ .cpu = "mpcore+v6k+dsp", .version = 6 } },
+        .{ "v6kz", S{ .cpu = "arm1176jzf_s+v6kz+dsp", .version = 6 } },
+        .{ "v6z", S{ .cpu = "arm1176jzf_s+v6kz+dsp", .version = 6 } },
+        .{ "v6zk", S{ .cpu = "arm1176jzf_s+v6kz+dsp", .version = 6 } },
         .{ "v6t2", S{ .cpu = "arm1156t2_s+v6t2", .version = 6 } },
         .{ "v6m", S{ .cpu = "cortex_m0+v6m", .version = 6, .profile = .m_baseline } },
         .{ "v6sm", S{ .cpu = "cortex_m0+v6m", .version = 6, .profile = .m_baseline } },
-        .{ "v7", S{ .cpu = "generic+v7a", .version = 7, .fpu = true, .plain = true } },
-        .{ "v7a", S{ .cpu = "generic+v7a", .version = 7, .fpu = true, .plain = true } },
-        .{ "v7l", S{ .cpu = "generic+v7a", .version = 7, .fpu = true, .plain = true } },
-        .{ "v7hl", S{ .cpu = "generic+v7a", .version = 7, .fpu = true, .plain = true } },
-        .{ "v7ve", S{ .cpu = "generic+v7ve", .version = 7, .fpu = true } },
+        .{ "v7", S{ .cpu = "generic+v7a", .version = 7, .plain = true } },
+        .{ "v7a", S{ .cpu = "generic+v7a", .version = 7, .plain = true } },
+        .{ "v7l", S{ .cpu = "generic+v7a", .version = 7, .plain = true } },
+        .{ "v7hl", S{ .cpu = "generic+v7a", .version = 7, .plain = true } },
+        .{ "v7ve", S{ .cpu = "generic+v7ve", .version = 7 } },
         .{ "v7r", S{ .cpu = "cortex_r4+v7r", .version = 7, .profile = .r } },
         .{ "v7m", S{ .cpu = "cortex_m3+v7m", .version = 7, .profile = .m } },
-        .{ "v7em", S{ .cpu = "cortex_m4+v7em+vfp4d16sp", .version = 7, .profile = .m, .fpu = true } },
-        .{ "v8", S{ .cpu = "generic+v8a", .version = 8, .fpu = true } },
-        .{ "v8a", S{ .cpu = "generic+v8a", .version = 8, .fpu = true } },
-        .{ "v8l", S{ .cpu = "generic+v8a", .version = 8, .fpu = true } },
-        .{ "v8.1a", S{ .cpu = "generic+v8_1a", .version = 8, .fpu = true } },
-        .{ "v8.2a", S{ .cpu = "generic+v8_2a", .version = 8, .fpu = true } },
-        .{ "v8.3a", S{ .cpu = "generic+v8_3a", .version = 8, .fpu = true } },
-        .{ "v8.4a", S{ .cpu = "generic+v8_4a", .version = 8, .fpu = true } },
-        .{ "v8.5a", S{ .cpu = "generic+v8_5a", .version = 8, .fpu = true } },
-        .{ "v8.6a", S{ .cpu = "generic+v8_6a", .version = 8, .fpu = true } },
-        .{ "v8.7a", S{ .cpu = "generic+v8_7a", .version = 8, .fpu = true } },
-        .{ "v8.8a", S{ .cpu = "generic+v8_8a", .version = 8, .fpu = true } },
-        .{ "v8.9a", S{ .cpu = "generic+v8_9a", .version = 8, .fpu = true } },
-        .{ "v9", S{ .cpu = "generic+v9a", .version = 9, .fpu = true } },
-        .{ "v9a", S{ .cpu = "generic+v9a", .version = 9, .fpu = true } },
-        .{ "v9.1a", S{ .cpu = "generic+v9_1a", .version = 9, .fpu = true } },
-        .{ "v9.2a", S{ .cpu = "generic+v9_2a", .version = 9, .fpu = true } },
-        .{ "v9.3a", S{ .cpu = "generic+v9_3a", .version = 9, .fpu = true } },
-        .{ "v9.4a", S{ .cpu = "generic+v9_4a", .version = 9, .fpu = true } },
-        .{ "v9.5a", S{ .cpu = "generic+v9_5a", .version = 9, .fpu = true } },
-        .{ "v9.6a", S{ .cpu = "generic+v9_6a", .version = 9, .fpu = true } },
-        .{ "v9.7a", S{ .cpu = "generic+v9_7a", .version = 9, .fpu = true } },
-        .{ "v8r", S{ .cpu = "generic+v8r", .version = 8, .profile = .r, .fpu = true } },
+        .{ "v7em", S{ .cpu = "cortex_m4+v7em", .version = 7, .profile = .m, .hard_float = "+vfp4d16sp" } },
+        .{ "v8", S{ .cpu = "generic+v8a", .version = 8 } },
+        .{ "v8a", S{ .cpu = "generic+v8a", .version = 8 } },
+        .{ "v8l", S{ .cpu = "generic+v8a", .version = 8 } },
+        .{ "v8.1a", S{ .cpu = "generic+v8_1a", .version = 8 } },
+        .{ "v8.2a", S{ .cpu = "generic+v8_2a", .version = 8 } },
+        .{ "v8.3a", S{ .cpu = "generic+v8_3a", .version = 8 } },
+        .{ "v8.4a", S{ .cpu = "generic+v8_4a", .version = 8 } },
+        .{ "v8.5a", S{ .cpu = "generic+v8_5a", .version = 8 } },
+        .{ "v8.6a", S{ .cpu = "generic+v8_6a", .version = 8 } },
+        .{ "v8.7a", S{ .cpu = "generic+v8_7a", .version = 8 } },
+        .{ "v8.8a", S{ .cpu = "generic+v8_8a", .version = 8 } },
+        .{ "v8.9a", S{ .cpu = "generic+v8_9a", .version = 8 } },
+        .{ "v9", S{ .cpu = "generic+v9a", .version = 9 } },
+        .{ "v9a", S{ .cpu = "generic+v9a", .version = 9 } },
+        .{ "v9.1a", S{ .cpu = "generic+v9_1a", .version = 9 } },
+        .{ "v9.2a", S{ .cpu = "generic+v9_2a", .version = 9 } },
+        .{ "v9.3a", S{ .cpu = "generic+v9_3a", .version = 9 } },
+        .{ "v9.4a", S{ .cpu = "generic+v9_4a", .version = 9 } },
+        .{ "v9.5a", S{ .cpu = "generic+v9_5a", .version = 9 } },
+        .{ "v9.6a", S{ .cpu = "generic+v9_6a", .version = 9 } },
+        .{ "v9.7a", S{ .cpu = "generic+v9_7a", .version = 9 } },
+        .{ "v8r", S{ .cpu = "generic+v8r", .version = 8, .profile = .r } },
         .{ "v8m.base", S{ .cpu = "generic+v8m", .version = 8, .profile = .m_baseline } },
-        .{ "v8m.main", S{ .cpu = "generic+v8m_main+fp_armv8d16", .version = 8, .profile = .m, .fpu = true } },
-        .{ "v8.1m.main", S{ .cpu = "generic+v8_1m_main+fp_armv8d16sp+fullfp16", .version = 8, .profile = .m, .fpu = true } },
+        .{ "v8m.main", S{ .cpu = "generic+v8m_main", .version = 8, .profile = .m, .hard_float = "+fp_armv8d16" } },
+        .{ "v8.1m.main", S{ .cpu = "generic+v8_1m_main", .version = 8, .profile = .m, .hard_float = "+fp_armv8d16sp+fullfp16" } },
     });
     var rest = mem.cutPrefix(u8, text, "arm") orelse mem.cutPrefix(u8, text, "thumb") orelse return null;
     var big_endian = false;
@@ -5855,7 +5858,6 @@ fn clangArmCpu(
         else => return error.Unsupported,
     }
     var version = arm.sub.version;
-    var fpu = arm.sub.fpu;
     const cpu = switch (os) {
         .linux, .freestanding => arm.sub.cpu,
         .freebsd, .netbsd => if (!arm.sub.plain) arm.sub.cpu else switch (version) {
@@ -5871,20 +5873,19 @@ fn clangArmCpu(
         break :cpu "arm1022e+v5te+dsp";
     } else if (abi.?.float() == .hard) cpu: {
         version = 6;
-        fpu = true;
         break :cpu "arm1176jzf_s+v6kz+dsp";
     } else cpu: {
         version = 4;
         break :cpu "arm7tdmi+v4t";
     };
-    // A soft-float environment on a CPU with a floating-point unit is Clang's
-    // `softfp`, which Zig does not support.
-    if (fpu and abi.?.float() == .soft) return error.Unsupported;
+    // For a soft-float environment on a CPU with a floating-point unit Clang
+    // uses `softfp`, which has the same calling convention as Zig's soft float.
+    const hard_float = if (abi.?.float() == .hard) arm.sub.hard_float else "";
     // Clang assumes that unaligned accesses fault before ARMv7, and on
     // M-profile cores without the Main Extension.
-    if (arm.sub.profile == .m_baseline or version < @as(u8, if (os == .netbsd) 6 else 7))
-        return std.fmt.allocPrint(arena, "{s}+strict_align", .{cpu});
-    return cpu;
+    const strict_align = arm.sub.profile == .m_baseline or version < @as(u8, if (os == .netbsd) 6 else 7);
+    if (hard_float.len == 0 and !strict_align) return cpu;
+    return std.fmt.allocPrint(arena, "{s}{s}{s}", .{ cpu, hard_float, if (strict_align) "+strict_align" else "" });
 }
 
 test clangTargetToZig {
@@ -5903,6 +5904,7 @@ test clangTargetToZig {
         // LLVM and GCC triples.
         .{ "x86_64-unknown-linux-gnu", "x86_64-linux-gnu", null },
         .{ "x86_64-pc-linux-gnu", "x86_64-linux-gnu", null },
+        .{ "x86_64--linux-gnu", "x86_64-linux-gnu", null },
         .{ "x86_64-unknown-linux-gnux32", "x86_64-linux-gnux32", null },
         .{ "aarch64-unknown-linux-musl", "aarch64-linux-musl", null },
         .{ "riscv64-unknown-linux-gnu", "riscv64-linux-gnu", null },
@@ -5953,18 +5955,31 @@ test clangTargetToZig {
         .{ "thumbv6m-none-eabi", "thumb-freestanding-eabi", "cortex_m0+v6m+strict_align" },
         .{ "thumbv8m.main-none-eabihf", "thumb-freestanding-eabihf", "generic+v8m_main+fp_armv8d16" },
         .{ "thumbv7-pc-windows-msvc", "thumb-windows-msvc", "cortex_a9+v7a" },
+        // A soft-float environment on a CPU with a floating-point unit is
+        // Clang's `softfp`, which calls functions like Zig's soft float.
+        .{ "armv7a-linux-androideabi21", "arm-linux-androideabi.21", "generic+v7a" },
+        .{ "armv7-unknown-linux-gnueabi", "arm-linux-gnueabi", "generic+v7a" },
+        .{ "armv6-unknown-linux-gnueabi", "arm-linux-gnueabi", "arm1136jf_s+v6+strict_align" },
+        .{ "thumbv7em-none-eabi", "thumb-freestanding-eabi", "cortex_m4+v7em" },
+        .{ "thumbv8m.main-none-eabi", "thumb-freestanding-eabi", "generic+v8m_main" },
         // Triples that cannot be translated to the target Clang uses are unchanged.
         .{ "x86_64-bogus-gnu", "x86_64-bogus-gnu", null },
         .{ "bogus-unknown-linux-gnu", "bogus-unknown-linux-gnu", null },
         .{ "x86_64-unknown-linux-gnu-extra", "x86_64-unknown-linux-gnu-extra", null },
         .{ "x86_64", "x86_64", null },
+        .{ "native-unknown-linux-gnu", "native-unknown-linux-gnu", null },
+        .{ "x86_64-unknown-native-gnu", "x86_64-unknown-native-gnu", null },
+        .{ "x86_64-apple-native", "x86_64-apple-native", null },
+        .{ "native-apple-darwin", "native-apple-darwin", null },
+        .{ "armv7-unknown-native-gnueabihf", "armv7-unknown-native-gnueabihf", null },
+        .{ "-unknown-linux-gnu", "-unknown-linux-gnu", null },
+        .{ "x86_64-unknown--gnu", "x86_64-unknown--gnu", null },
+        .{ "x86_64-unknown-linux-", "x86_64-unknown-linux-", null },
+        .{ "", "", null },
         .{ "riscv64gc-unknown-linux-gnu", "riscv64gc-unknown-linux-gnu", null },
         .{ "powerpc64le-unknown-linux-gnu", "powerpc64le-unknown-linux-gnu", null },
         .{ "armv2-unknown-linux-gnueabi", "armv2-unknown-linux-gnueabi", null },
         .{ "arm-unknown-linux", "arm-unknown-linux", null },
-        .{ "armv7-unknown-linux-gnueabi", "armv7-unknown-linux-gnueabi", null },
-        .{ "armv7a-linux-androideabi21", "armv7a-linux-androideabi21", null },
-        .{ "thumbv7em-none-eabi", "thumbv7em-none-eabi", null },
         .{ "armv7-unknown-openbsd-gnueabihf", "armv7-unknown-openbsd-gnueabihf", null },
         .{ "armv7-unknown-linux-gnu", "armv7-unknown-linux-gnu", null },
         .{ "armv7-unknown-linux-musl", "armv7-unknown-linux-musl", null },

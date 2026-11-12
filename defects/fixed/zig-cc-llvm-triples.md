@@ -106,7 +106,8 @@ What it translates:
   `armv8m.base`, `armv8m.main`, `armv8.1m.main`, the `thumb` and big-endian
   `armeb`/`thumbeb`/`...eb` spellings and LLVM's synonyms) map to the CPU and
   features clang uses, from its `-###` output: the sub-architecture's default
-  CPU plus its architecture feature (and the default FPU for M-profile),
+  CPU plus its architecture feature (and, for a hard-float environment, the
+  default FPU of an M-profile core),
   clang's per-OS overrides (FreeBSD and NetBSD for v6 and v7, Windows v7 as
   Thumb on Cortex-A9), its environment-based default for plain `arm`
   (`arm7tdmi`, or `arm1176jzf-s` for hard float), M-profile as Thumb and
@@ -120,6 +121,19 @@ What it translates:
   outline atomics), the Apple simulators (`apple_m1`) and visionOS
   (`apple_a12`); bare-metal RISC-V (`rv32imac`/`rv64imac`, soft float);
   wasm32 (`generic`).
+- A 32-bit Arm soft-float environment (`gnueabi`, `eabi`, `musleabi`,
+  `androideabi`) on a CPU with an FPU, such as the NDK's
+  `armv7a-linux-androideabi21` or `thumbv7em-none-eabi`. Clang uses
+  `softfp` there: the base AAPCS calling convention, with floats in core
+  registers, but FPU (and NEON) instructions inside functions. Zig has no
+  `softfp`, so these get Zig's pure soft float on the CPU the triple names,
+  exactly what the Zig spelling gives (`armv7a-linux-androideabi21` is
+  byte-identical to `-target arm-linux-androideabi.21`). The calling
+  convention is the same, so the objects link and call each other: neither
+  carries `Tag_ABI_VFP_args`, and the cross-linked programs below return
+  correct values. Only the code inside functions differs, and C code sees
+  `__SOFTFP__` and no `__ARM_NEON`; see `cb36723-arm-softfloat-neon-left-enabled`
+  for the related soft-float feature defect and the missing `softfp` mode.
 
 Still rejected, with the reason:
 
@@ -128,14 +142,14 @@ Still rejected, with the reason:
   double`, clang uses IBM double-double), s390x, SPARC, MIPS o32 (clang
   `fpxx`), m68k, LoongArch32, Android RISC-V (clang enables RVA22 and V), and
   Haiku, DragonFly, Fuchsia and the other OSes outside the list above.
-- 32-bit Arm with a soft-float environment (`gnueabi`, `eabi`, `musleabi`,
-  `androideabi`) on a CPU with an FPU: clang uses `softfp` (the soft-float
-  calling convention with FPU instructions, e.g. NEON for
-  `armv7a-linux-androideabi21`), and Zig only has pure soft float. 32-bit
-  Arm outside Windows without an EABI environment (none, or `gnu`, `musl`,
-  `ohos`, `android`): clang uses a non-EABI soft-float ABI (`__addsf3`,
-  `__divdi3` instead of `__aeabi_*`), which Zig does not have. Arm on
-  OpenBSD: clang ignores `gnueabihf` there and uses `softfp`.
+- 32-bit Arm outside Windows without an EABI environment (none, or `gnu`,
+  `musl`, `ohos`, `android`): clang uses a non-EABI soft-float ABI
+  (`__addsf3`, `__divdi3` instead of `__aeabi_*`), which Zig does not have.
+  Arm on OpenBSD: clang ignores `gnueabihf` there and uses `softfp`, while
+  the Zig target would be hard float, a different calling convention.
+- A `native` component (`native-unknown-linux-gnu`,
+  `x86_64-unknown-native-gnu`): not an LLVM component, and rejected with the
+  same diagnostic as before.
 - Obsolete or unknown Arm sub-architectures (`armv2`, `armv3`, `armv8m`),
   which clang silently treats as plain `arm`, and the Apple-only `armv7s`
   and `armv7k`.
@@ -177,6 +191,24 @@ single-precision hard float; `x86_64-unknown-linux` uses glibc and
 `wasm32-wasi`, ...) are byte-identical to the unfixed compiler's, except
 that COFF debug info embeds the compiler's own path. An explicit `-mcpu` or
 `-march` still overrides the CPU that the triple implies.
+
+Link compatibility of the `softfp` triples was run, not inferred, because
+no NDK or Android device was available. For `armv7a-linux-androideabi21`
+and `thumbv7em-none-eabi`, a caller and a callee passing and returning
+`float`, `double`, mixed arguments and a `{float, double}` struct were each
+compiled with `zig cc --target=<t>` and with `zig clang -target <t>`. Each
+cross pairing (zig caller with clang callee, and the reverse) was linked
+into a bare-metal image with the FPU enabled, and run under
+`qemu-system-arm` (`-M virt -cpu cortex-a15` and `-M mps2-an386`, a
+Cortex-M4) with semihosting. All four pairings reported correct values. As
+a negative control, the same zig caller linked against a clang `gnueabihf`
+or `eabihf` callee reported wrong values, so the harness detects a calling
+convention mismatch.
+
+Every input still rejected (each rejected test row, `native` components and
+empty components) gives the release's diagnostic, byte for byte. A
+Debug-built translator ran about a million generated triples (every
+combination of 45 odd components in 2, 3 and 4 positions) without a panic.
 
 ## Notes
 
