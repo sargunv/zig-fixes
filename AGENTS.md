@@ -53,7 +53,9 @@ A fix is proposed as a pull request from `fix/<slug>` to the line, and
 squash-merged. The branch may hold any number of commits. Whoever merges gives
 the squash commit the fix's message and trailers, in the format under Commits.
 GitHub's default squash message is only right when the pull request holds a
-single commit.
+single commit. The pull request's description is written for its reviewer. It
+is not the commit message and carries no trailers, so check trailers on the
+commits, not on the description.
 
 ## The backlog
 
@@ -146,6 +148,16 @@ message, then amend to add the `Fix:` trailer and the entry's move.
 
 `git log --grep '^Fix: <slug>'` must find every commit that belongs to an
 entry. Reverts use `git revert` and move the entry back.
+
+## Review guidelines
+
+For automated reviewers of pull requests.
+
+- Review the diff. Do not report on commit messages or trailers. A review tool
+  may be handed a commit made from the pull request's title and description,
+  which is not the commit that lands. Whoever merges checks the trailers.
+- A pull request's description ends with an AI disclosure line in italics. It
+  is not a trailer and is not meant to be one.
 
 ## Merging upstream
 
