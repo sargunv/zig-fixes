@@ -1748,6 +1748,8 @@ pub fn maybeAttachSignalStack() void {
         // some target-specific inline assembly to swap the stack pointer.
         .windows => return,
         .wasi => return,
+        // Emscripten's libc stubs `sigaltstack` with `ENOSYS`.
+        .emscripten => return,
         else => {},
     }
     const global = struct {

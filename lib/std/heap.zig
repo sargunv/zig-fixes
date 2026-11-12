@@ -340,6 +340,10 @@ pub const page_allocator: Allocator = if (@hasDecl(root, "os") and
     @hasDecl(root.os, "heap") and
     @hasDecl(root.os.heap, "page_allocator"))
     root.os.heap.page_allocator
+else if (builtin.os.tag == .emscripten)
+    // Emscripten's libc owns the wasm memory; growing it directly would
+    // overlap `malloc` and leave the JS heap views stale.
+    c_allocator
 else if (builtin.target.cpu.arch.isWasm()) .{
     .ptr = undefined,
     .vtable = &WasmAllocator.vtable,
