@@ -150,11 +150,11 @@
         .compiler_rt_panic = .{
             .path = "compiler_rt_panic",
         },
-        .ios = .{
-            .path = "ios",
-        },
         .ios_sysroot = .{
             .path = "ios_sysroot",
+        },
+        .ios = .{
+            .path = "ios",
         },
         .depend_on_main_mod = .{
             .path = "depend_on_main_mod",
