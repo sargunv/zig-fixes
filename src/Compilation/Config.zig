@@ -280,6 +280,10 @@ pub fn resolve(options: Options) ResolveError!Config {
             if (target.isFreeBSDLibC() or target.isNetBSDLibC() or target.isOpenBSDLibC()) {
                 break :b .dynamic;
             }
+
+            // OpenHarmony's toolchain links dynamically by default, and its static libc does not
+            // start on every architecture.
+            if (target.abi.isOpenHarmony()) break :b .dynamic;
         }
 
         // Static is generally a better default. Fight me.

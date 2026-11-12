@@ -2086,7 +2086,8 @@ const linux_copy_file_range_use_c = std.c.versionCheck(if (builtin.abi.isAndroid
 });
 const linux_copy_file_range_sys = if (linux_copy_file_range_use_c) std.c else std.os.linux;
 
-const statx_use_c = std.c.versionCheck(if (builtin.abi.isAndroid())
+// OpenHarmony's libc does not export statx.
+const statx_use_c = !builtin.abi.isOpenHarmony() and std.c.versionCheck(if (builtin.abi.isAndroid())
     .{ .major = 30, .minor = 0, .patch = 0 }
 else
     .{ .major = 2, .minor = 28, .patch = 0 });
