@@ -193,6 +193,9 @@
         .run_args = .{
             .path = "run_args",
         },
+        .macho_subtractor = .{
+            .path = "macho_subtractor",
+        },
     },
     .paths = .{
         "build.zig",
