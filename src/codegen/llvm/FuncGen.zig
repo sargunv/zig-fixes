@@ -980,6 +980,28 @@ fn buildCall(
                 try attributes.addParamAttr(llvm_arg_i, .{ .@"align" = elem_align }, &o.builder);
             },
         };
+
+        // Variadic arguments. Sema has applied C's default argument promotions to integers, and
+        // the target's C ABI may require the promoted value to be extended to a full register. C
+        // also promotes `bool` to `int`, so a `bool` must be extended on every target.
+        while (try it.nextCall(arg_types)) |lowering| switch (lowering) {
+            .byval, .abi_sized_int, .multiple_llvm_types => {
+                // x86_64 passes a `bool` as one `i8` part.
+                if (lowering == .multiple_llvm_types and it.types_len != 1) continue;
+                const arg_ty: Type = .fromInterned(arg_types[it.zig_index - 1]);
+                const signedness: ?std.lang.Signedness = if (arg_ty.toIntern() == .bool_type)
+                    .unsigned
+                else if (arg_ty.isAbiInt(zcu))
+                    ccAbiPromoteInt(fn_info.cc, zcu, arg_ty)
+                else
+                    null;
+                if (signedness) |s| try attributes.addParamAttr(it.llvm_index - 1, switch (s) {
+                    .signed => .signext,
+                    .unsigned => .zeroext,
+                }, &o.builder);
+            },
+            else => {},
+        };
     }
 
     const call = try fg.wip.call(

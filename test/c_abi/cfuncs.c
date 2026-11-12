@@ -1,6 +1,7 @@
 #include <complex.h>
 #include <inttypes.h>
 #include <stdalign.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16851,4 +16852,26 @@ void c_win64_varargs_f64_u64_f64_u64(double a, uint64_t b, double c, uint64_t d)
     assert_or_panic(b == UINT64_C(0x4018000000000000));
     assert_or_panic(c == 7.0);
     assert_or_panic(d == UINT64_C(0x4020000000000000));
+}
+
+void c_varargs_promoted_ints(int n, ...) {
+    va_list ap;
+    va_start(ap, n);
+    assert_or_panic(n == 3);
+#if defined(ZIG_RISCV64) || defined(__loongarch64) || defined(ZIG_MIPS64)
+    // These ABIs pass a 32-bit argument sign-extended to the full register,
+    // so it can be read back as a long.
+    assert_or_panic(va_arg(ap, long) == -1);
+    assert_or_panic(va_arg(ap, long) == (long)INT32_MIN);
+#elif defined(ZIG_PPC64) || defined(__s390x__)
+    // These extend a 32-bit argument according to its own signedness.
+    assert_or_panic(va_arg(ap, long) == -1);
+    assert_or_panic(va_arg(ap, long) == 0x80000000L);
+#else
+    assert_or_panic(va_arg(ap, int) == -1);
+    assert_or_panic(va_arg(ap, unsigned) == 0x80000000u);
+#endif
+    // C promotes bool to int.
+    assert_or_panic(va_arg(ap, int) == 1);
+    va_end(ap);
 }
