@@ -358,10 +358,14 @@ pub const smp_allocator: Allocator = .{
 };
 
 /// This allocator is fast, small, and specific to WebAssembly.
-pub const wasm_allocator: Allocator = .{
-    .ptr = undefined,
-    .vtable = &WasmAllocator.vtable,
-};
+pub const wasm_allocator: Allocator = if (builtin.os.tag == .emscripten)
+    // See `page_allocator`.
+    c_allocator
+else
+    .{
+        .ptr = undefined,
+        .vtable = &WasmAllocator.vtable,
+    };
 
 /// Supports single-threaded WebAssembly and Linux.
 pub const brk_allocator: Allocator = .{

@@ -57,9 +57,12 @@ worker: onmessage() captured an uncaught exception: RuntimeError: unreachable
 Adding `pub const std_options: std.Options = .{ .signal_stack_size = null };`
 fixes it: the program prints `in thread` then `done`.
 
-**2c, `page_allocator` is unusable beside Emscripten's libc, even
-single-threaded.** Any use of `std.heap.page_allocator` that needs fresh
-memory breaks the program:
+**2c, std's wasm allocators are unusable beside Emscripten's libc, even
+single-threaded.** Any use of `std.heap.page_allocator`,
+`std.heap.wasm_allocator`, `std.heap.brk_allocator`, or the types
+`std.heap.WasmAllocator` and `std.heap.BrkAllocator`, that needs fresh memory
+breaks the program. Portable code often picks `wasm_allocator` whenever
+`builtin.cpu.arch.isWasm()`:
 
 - Linked without `-sALLOW_MEMORY_GROWTH` (Emscripten's default), it fails
   every time, even with most of the heap free.
@@ -69,7 +72,10 @@ memory breaks the program:
   on), and the exit-time stack cookie check aborts.
 - The memory it returns overlaps memory that C `malloc` returns later: the
   overlap probe under Verification reports 32 overlapping pairs out of 64
-  `malloc` and 64 `page_allocator` blocks of 512 KiB, and corrupted contents.
+  `malloc` and 64 allocator blocks of 512 KiB, and 16 corrupted blocks, for
+  each of these names.
+- Multithreaded, `wasm_allocator` and `WasmAllocator` are the 2a compile
+  error.
 
 ## Evidence
 
@@ -120,7 +126,7 @@ Verified by reading code at 0.17.1.
   (`lib/std/start.zig:34`, `:757-775`), which never calls it.
 
 **2c (std).**
-- On wasm, `BrkAllocator.allocBigPages` (`lib/std/heap/BrkAllocator.zig:174-180`)
+- On wasm, `BrkAllocator.allocBigPages` (`lib/std/heap/BrkAllocator.zig:168-174`)
   grows linear memory with a raw `@wasmMemoryGrow`.
 - Emscripten owns linear memory. Its `sbrk` (`system/lib/libc/sbrk.c`)
   grows memory only when the new break passes the current memory size, and
@@ -136,6 +142,28 @@ Verified by reading code at 0.17.1.
 The original entry called 2c latent and unreproduced; it is real, and the
 stale JS views make it fail sooner than the overlap does.
 
+**Every path to a raw `memory.grow` or `WasmAllocator` in std**, found by
+searching `lib/` for `wasmMemoryGrow`, `WasmAllocator`, `BrkAllocator`,
+`wasm_allocator`, `brk_allocator` and the `isWasm()` branches in `heap.zig`,
+`heap/`, `Thread.zig`, `start.zig` and `debug.zig`. Line numbers are at
+0.17.1.
+
+| Place | Reachable on Emscripten? |
+|---|---|
+| `heap/BrkAllocator.zig:172`, `allocBigPages`: the only call to `@wasmMemoryGrow` in `lib/` | Yes, single-threaded, through every name below. |
+| `heap.zig:18`, `pub const WasmAllocator` (`BrkAllocator` or `@compileError`) | Yes, by name. |
+| `heap.zig:19`, `pub const BrkAllocator` | Yes, by name, single-threaded. Multithreaded it refuses to compile (`BrkAllocator.zig:14-16`), by design: it is documented as single-threaded only. |
+| `heap.zig:339-349`, `page_allocator` | Yes, and std reaches it itself (the panic handler, see 2a). |
+| `heap.zig:357-360`, `wasm_allocator` | Yes, by name. |
+| `heap.zig:363-366`, `brk_allocator` | Yes, by name, single-threaded. |
+| `start.zig:799`, `wasm_allocator` as `main`'s general-purpose allocator | No: only when not linking libc. Emscripten always links libc, so `start.zig:797` picks `c_allocator`. |
+| `start.zig:809`, the arena backed by `gpa` on wasm | Uses that same `gpa`, `c_allocator` on Emscripten. |
+| `lib/c/malloc.zig:45`, Zig's own libc `malloc` over `WasmAllocator` | No: Zig builds its libc only for static musl, wasi-libc and MinGW (`src/target.zig:480-482`), never for Emscripten. |
+| `heap.zig:903`, `brk_allocator` in std's test block | Tests only. |
+| `heap/debug_allocator.zig:97`, a 64 KiB page size on wasm | A constant; it grows nothing. |
+| `heap.zig:128`, `:400`, `debug_allocator.zig:1199`, `:1372`: test skips on wasm | Tests only. |
+| `Thread.zig`, `debug.zig` | No wasm allocator use. `debug.zig` reaches `page_allocator` only, covered above. |
+
 ## Fix sketch
 
 The original sketch proposed a dedicated allocator over `posix_memalign` at
@@ -146,6 +174,9 @@ plus manual alignment, since `std.c` declares no `posix_memalign` there).
 `start.zig` already uses `c_allocator` as the general-purpose allocator for
 every libc-linked wasm program, and Emscripten always links libc
 (`requiresLibC`, `lib/std/Target.zig:2317`).
+
+The multithreaded `WasmAllocator` type is not fixed here; see
+emscripten-wasm-allocator-type-threads.
 
 ## Verification
 
@@ -162,19 +193,26 @@ emcc -pthread -sPTHREAD_POOL_SIZE=2 -sALLOW_MEMORY_GROWTH t.o -o t.js
 node t.js    # prints "in thread" then "done"
 ```
 
-2c, single-threaded: `overlap.zig` interleaves 64 `malloc` and 64
-`page_allocator` blocks of 512 KiB, fills each with its own byte, then counts
-overlapping pairs and blocks that lost their fill. Since printing fails
-while 2c is present, it also reports through the exit code: the low bits
-count overlapping pairs, and bit 7 is set if any block is corrupted.
+2c, single-threaded: `overlap.zig` interleaves 64 `malloc` blocks and 64
+blocks from the allocator under test, 512 KiB each, fills each with its own
+byte, then counts overlapping pairs and blocks that lost their fill. Before
+printing, it asks Emscripten to refresh its JS heap views, which otherwise
+stay detached after a raw `memory.grow`, so it can print either way. Change
+`probe` to `std.heap.wasm_allocator`, `std.heap.brk_allocator`, or
+`.{ .ptr = undefined, .vtable = &std.heap.WasmAllocator.vtable }` to test the
+other names.
 
 ```zig
 const std = @import("std");
 
+/// The allocator under test.
+const probe: std.mem.Allocator = std.heap.page_allocator;
+
 const Range = struct { start: usize, end: usize, tag: u8 };
 
-/// Printing fails while page_allocator grows memory behind Emscripten.
-const can_print = std.heap.page_allocator.vtable != &std.heap.BrkAllocator.vtable;
+/// Refreshes Emscripten's JS heap views, which a raw `memory.grow` leaves
+/// detached, so the result can be printed either way.
+extern fn emscripten_notify_memory_growth(memory_index: usize) void;
 
 pub fn main() u8 {
     const n = 64;
@@ -183,7 +221,7 @@ pub fn main() u8 {
     var count: usize = 0;
     for (0..n) |i| {
         const m: [*]u8 = @ptrCast(std.c.malloc(size) orelse @panic("malloc failed"));
-        const z = std.heap.page_allocator.alloc(u8, size) catch @panic("page_allocator failed");
+        const z = probe.alloc(u8, size) catch @panic("probe allocator failed");
         const mt: u8 = @intCast(2 * i % 251 + 1);
         const zt: u8 = @intCast((2 * i + 1) % 251 + 1);
         @memset(m[0..size], mt);
@@ -192,6 +230,7 @@ pub fn main() u8 {
         ranges[count + 1] = .{ .start = @intFromPtr(z.ptr), .end = @intFromPtr(z.ptr) + size, .tag = zt };
         count += 2;
     }
+    emscripten_notify_memory_growth(0);
     var overlaps: usize = 0;
     for (ranges[0..count], 0..) |a, i| {
         for (ranges[i + 1 .. count]) |b| {
@@ -208,21 +247,26 @@ pub fn main() u8 {
             }
         }
     }
-    if (can_print) std.debug.print("ranges={d} overlapping_pairs={d} corrupted_ranges={d}\n", .{ count, overlaps, corrupted });
-    return @as(u8, @intCast(@min(overlaps, 127))) | @as(u8, @intFromBool(corrupted != 0)) << 7;
+    std.debug.print("overlapping_pairs={d} corrupted_ranges={d}\n", .{ overlaps, corrupted });
+    return @intFromBool(overlaps != 0 or corrupted != 0);
 }
 ```
 
 ```sh
 zig build-obj overlap.zig -target wasm32-emscripten -OReleaseSafe
-emcc -sALLOW_MEMORY_GROWTH -sASSERTIONS=0 -sSTACK_OVERFLOW_CHECK=0 overlap.o -o overlap.js
-node overlap.js; echo "exit=$?"
+emcc -sALLOW_MEMORY_GROWTH overlap.o -o overlap.js
+node overlap.js    # fixed: overlapping_pairs=0 corrupted_ranges=0
 ```
+
+The same file built with
+`-mcpu=generic+atomics+bulk_memory -fno-single-threaded` and linked with
+`emcc -pthread` checks the multithreaded case.
 
 The suite can only compile for Emscripten: linking needs emcc and running
 needs Node, so 2b and 2c have no test in upstream's suite. 2a has one:
-`test/standalone/emscripten_threads` compiles `t.zig` as a multithreaded
-Emscripten object in all four optimize modes. Run it alone with
+`test/standalone/emscripten_threads` compiles a multithreaded Emscripten
+object in all four optimize modes. Its thread allocates from
+`page_allocator` and `wasm_allocator` by name, then prints. Run it alone with
 `cd test/standalone/emscripten_threads && ZIG_LIB_DIR=<checkout>/lib zig build test`.
 
 ## Fix
@@ -234,7 +278,16 @@ Emscripten object in all four optimize modes. Run it alone with
   Emscripten, as it already does on WASI. Signals on Emscripten are never
   delivered asynchronously, so an alternate signal stack has no use there.
   This fixes 2b.
-- `test/standalone/emscripten_threads`: the compile test for 2a.
+- `lib/std/heap.zig`: on Emscripten, `wasm_allocator` is also `c_allocator`,
+  so portable code that picks it on wasm works, with or without threads.
+- `lib/std/heap/BrkAllocator.zig`: on Emscripten, `allocBigPages` takes its
+  64 KiB-aligned big pages from `c_allocator` instead of `@wasmMemoryGrow`.
+  This fixes 2c for `brk_allocator` and for code that uses the types
+  `BrkAllocator` and `WasmAllocator` directly, without changing either type.
+  `BrkAllocator` keeps big pages on its own free lists and never returns
+  them, as before.
+- `test/standalone/emscripten_threads`: the compile test for 2a, using
+  `page_allocator` and `wasm_allocator` by name.
 
 Verified with Zig 0.17.1 plus this line's `lib/`, emsdk 6.0.13 and Node
 26.13, on macOS:
@@ -243,24 +296,29 @@ Verified with Zig 0.17.1 plus this line's `lib/`, emsdk 6.0.13 and Node
 |---|---|---|
 | `t.zig`, multithreaded, all four modes | 2a compile error | prints `in thread`, `done`; exit 0 |
 | `t.zig` with the 2a override, ReleaseSafe | 2b panic in the thread | (override not needed) |
-| `overlap.zig`, single-threaded | exit 160: 32 overlapping pairs, corrupted | `overlapping_pairs=0 corrupted_ranges=0`; exit 0 |
+| `overlap.zig`, single-threaded, for each of `page_allocator`, `wasm_allocator`, `brk_allocator` and `WasmAllocator.vtable` | `overlapping_pairs=32 corrupted_ranges=16`, each | `overlapping_pairs=0 corrupted_ranges=0`, each |
+| `overlap.zig`, multithreaded, `wasm_allocator` | 2a compile error | 0 overlaps, 0 corrupted |
+| `overlap.zig`, multithreaded, `brk_allocator` / `WasmAllocator.vtable` | compile error | unchanged (by design / emscripten-wasm-allocator-type-threads) |
+| `ArrayList` of 100000 items on `wasm_allocator`, then on `brk_allocator`, all four modes | `error: OutOfMemory` without memory growth; an abort with it | both sums correct, with and without memory growth |
 | one 512 KiB `page_allocator` block, no memory growth | `panic: oom` | succeeds |
 | same, with `-sALLOW_MEMORY_GROWTH` | next print aborts | succeeds |
 | 4 threads, 200 rounds of `page_allocator` and `malloc` each, Debug and ReleaseFast | does not compile | 0 corrupted blocks |
 | panic in a spawned thread, Debug | does not compile | prints `thread N panic: boom in thread` |
 | single-threaded program using `init.gpa` and `init.arena`, all four modes | prints `st sum=4999950000` | same |
-| `wasm32-wasi` and `wasm32-freestanding` programs using `page_allocator`, all four modes | same output | same output; binaries byte-identical with `-fstrip` |
+| `wasm32-wasi` and `wasm32-freestanding` programs using `page_allocator`, `wasm_allocator` and `brk_allocator`, all four modes | same output | same output; binaries byte-identical with `-fstrip` |
+| `x86_64-linux-none` single-threaded program using `brk_allocator`, ReleaseSafe | – | binary byte-identical with `-fstrip` |
 | `test/standalone/emscripten_threads` | fails (2a) | passes |
+| `zig test lib/std/std.zig --test-filter heap`, macOS host | – | 147 passed |
 
 ## Notes
 
 - Before this fix a program could work around 2a and 2b from its root
   module: set `os.heap.page_allocator` (or `debug.getDebugInfoAllocator`)
   and `std_options.signal_stack_size = null`. Those overrides still work.
-- `std.heap.wasm_allocator` and `std.heap.brk_allocator` still grow memory
-  with a raw `memory.grow`, so on Emscripten they have the same problem as
-  2c when a program picks them by name. They are explicit requests for that
-  allocator, std does not reach them on its own on Emscripten, and changing
-  what they return is beyond this fix.
+- The first version of this fix covered `page_allocator` only, and left
+  `wasm_allocator`, `brk_allocator` and the two types on raw `memory.grow`.
+  The second commit closes those.
+- Related: emscripten-wasm-allocator-type-threads, the multithreaded
+  `WasmAllocator` type, which cannot be fixed without new public API.
 - Multithreaded `wasm32-wasi` still does not compile, for the reason
   github#22807 tracks; this fix changes nothing there.
