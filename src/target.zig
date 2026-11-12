@@ -122,12 +122,14 @@ pub fn defaultSingleThreaded(target: *const std.Target) bool {
     return false;
 }
 
-pub fn useEmulatedTls(target: *const std.Target) bool {
+pub fn useEmulatedTls(target: *const std.Target, output_mode: std.lang.OutputMode, link_libc: bool) bool {
     if (target.abi.isAndroid()) {
         if (target.os.version_range.linux.android < 29) return true;
         return false;
     }
-    if (target.abi.isOpenHarmony()) return true;
+    // `__emutls_get_address` is provided only when linking libc. An executable without libc sets
+    // up native TLS itself, and objects and libraries keep the emulated TLS that C code uses.
+    if (target.abi.isOpenHarmony()) return link_libc or output_mode != .Exe;
     return switch (target.os.tag) {
         .openbsd => true,
         else => false,
