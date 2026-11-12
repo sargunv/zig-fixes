@@ -18127,6 +18127,21 @@ test "win64 varargs" {
     );
 }
 
+extern fn c_varargs_promoted_ints(n: c_int, ...) void;
+
+var varargs_wide_int: u64 = 0x1234_5678_ffff_ffff;
+var varargs_wide_uint: u64 = 0x1234_5678_8000_0000;
+var varargs_wide_bool: u64 = 0x1234_5678_0000_0003;
+
+test "variadic promoted integers and bool" {
+    // Truncate wider values, so that the registers keep stale upper bits unless
+    // the call extends the arguments as the C ABI requires.
+    const i: c_int = @bitCast(@as(u32, @truncate(@as(*volatile u64, &varargs_wide_int).*)));
+    const u: c_uint = @truncate(@as(*volatile u64, &varargs_wide_uint).*);
+    const b: bool = @bitCast(@as(u1, @truncate(@as(*volatile u64, &varargs_wide_bool).*)));
+    c_varargs_promoted_ints(3, i, u, b);
+}
+
 const preserve_none_cc: ?std.lang.CallingConvention = if (builtin.zig_backend != .stage2_llvm)
     null
 else switch (builtin.cpu.arch) {
