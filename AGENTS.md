@@ -149,6 +149,16 @@ message, then amend to add the `Fix:` trailer and the entry's move.
 `git log --grep '^Fix: <slug>'` must find every commit that belongs to an
 entry. Reverts use `git revert` and move the entry back.
 
+## Review guidelines
+
+For automated reviewers of pull requests.
+
+- Review the diff. Do not report on commit messages or trailers. A review tool
+  may be handed a commit made from the pull request's title and description,
+  which is not the commit that lands. Whoever merges checks the trailers.
+- A pull request's description ends with an AI disclosure line in italics. It
+  is not a trailer and is not meant to be one.
+
 ## Merging upstream
 
 Merge `upstream/0.17.x` into `fork/0.17.x` whenever it has moved, and always
