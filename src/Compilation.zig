@@ -1766,14 +1766,26 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
         const link_libc = options.config.link_libc;
 
         // The bundled libSystem stub covers only macOS and Mac Catalyst. For
-        // iOS, tvOS, visionOS and watchOS, use the SDK given as the sysroot.
+        // iOS, tvOS, visionOS and watchOS, use the SDK given as the sysroot,
+        // or else the one installed on a Darwin host.
         const darwin_sdk: ?*const LibCInstallation = sdk: {
             if (options.libc_installation != null or !link_libc) break :sdk null;
             switch (target.os.tag) {
                 .ios, .tvos, .visionos, .watchos => {},
                 else => break :sdk null,
             }
-            const sdk_dir = options.sysroot orelse break :sdk null;
+            const sdk_dir = options.sysroot orelse {
+                if (!builtin.os.tag.isDarwin()) break :sdk null;
+                const lci = try arena.create(LibCInstallation);
+                lci.* = LibCInstallation.findNative(arena, io, .{
+                    .target = target,
+                    .environ_map = options.environ_map,
+                }) catch |err| switch (err) {
+                    error.OutOfMemory => |e| return e,
+                    else => break :sdk null,
+                };
+                break :sdk lci;
+            };
             const sdk_settings = try fs.path.join(arena, &.{ sdk_dir, "SDKSettings.json" });
             Io.Dir.cwd().access(io, sdk_settings, .{}) catch |err| switch (err) {
                 error.Canceled => |e| return e,
