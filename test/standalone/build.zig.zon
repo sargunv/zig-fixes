@@ -153,6 +153,9 @@
         .ios = .{
             .path = "ios",
         },
+        .macho_empty_unwind_info = .{
+            .path = "macho_empty_unwind_info",
+        },
         .depend_on_main_mod = .{
             .path = "depend_on_main_mod",
         },
