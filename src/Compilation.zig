@@ -842,10 +842,6 @@ pub const CObject = struct {
         success: struct {
             /// The outputted result. `sub_path` owned by gpa.
             object_path: Cache.Path,
-            /// This is a file system lock on the cache hash manifest representing this
-            /// object. It prevents other invocations of the Zig compiler from interfering
-            /// with this object until released.
-            lock: Cache.Lock,
         },
         /// There will be a corresponding ErrorMsg in Compilation.failed_c_objects.
         failure,
@@ -1126,7 +1122,7 @@ pub const CObject = struct {
     };
 
     /// Returns if there was failure.
-    pub fn clearStatus(self: *CObject, gpa: Allocator, io: Io) bool {
+    pub fn clearStatus(self: *CObject, gpa: Allocator) bool {
         switch (self.status) {
             .new => return false,
             .failure, .failure_retryable => {
@@ -1135,15 +1131,14 @@ pub const CObject = struct {
             },
             .success => |*success| {
                 gpa.free(success.object_path.sub_path);
-                success.lock.release(io);
                 self.status = .new;
                 return false;
             },
         }
     }
 
-    pub fn destroy(self: *CObject, gpa: Allocator, io: Io) void {
-        _ = self.clearStatus(gpa, io);
+    pub fn destroy(self: *CObject, gpa: Allocator) void {
+        _ = self.clearStatus(gpa);
         gpa.destroy(self);
     }
 };
@@ -1161,8 +1156,9 @@ pub const Win32Resource = struct {
             res_path: []u8,
             /// This is a file system lock on the cache hash manifest representing this
             /// object. It prevents other invocations of the Zig compiler from interfering
-            /// with this object until released.
-            lock: Cache.Lock,
+            /// with this object until released. Only kept for a `.manifest` file, whose
+            /// `.res` is written in place in the cache.
+            lock: ?Cache.Lock,
         },
         /// There will be a corresponding ErrorMsg in Compilation.failed_win32_resources.
         failure,
@@ -1182,7 +1178,7 @@ pub const Win32Resource = struct {
             },
             .success => |*success| {
                 gpa.free(success.res_path);
-                success.lock.release(io);
+                if (success.lock) |*lock| lock.release(io);
                 self.status = .new;
                 return false;
             },
@@ -2642,7 +2638,7 @@ pub fn destroy(comp: *Compilation) void {
     }
 
     for (comp.c_objects.items) |c_object| {
-        c_object.destroy(gpa, io);
+        c_object.destroy(gpa);
     }
     comp.c_objects.deinit(gpa);
 
@@ -3295,6 +3291,45 @@ fn flush(comp: *Compilation, arena: Allocator) (Io.Cancelable || Allocator.Error
             error.Canceled, error.OutOfMemory => |e| return e,
             error.AlreadyReported => return,
         };
+    }
+}
+
+/// Renames a file into `o/<digest>/`. Windows without POSIX rename semantics
+/// cannot replace a file that another process has open; if the file there has
+/// the same contents, keep it.
+fn renameTmpFileIntoCache(
+    io: Io,
+    tmp_dir: Io.Dir,
+    tmp_basename: []const u8,
+    o_dir: Io.Dir,
+    o_basename: []const u8,
+) Io.Dir.RenameError!void {
+    Io.Dir.rename(tmp_dir, tmp_basename, o_dir, o_basename, io) catch |err| {
+        if (builtin.os.tag != .windows or err != error.AccessDenied) return err;
+        const same = sameFileContents(io, tmp_dir, tmp_basename, o_dir, o_basename) catch |e| switch (e) {
+            error.Canceled => |c| return c,
+            else => return err,
+        };
+        if (!same) return err;
+        tmp_dir.deleteFile(io, tmp_basename) catch {};
+    };
+}
+
+fn sameFileContents(io: Io, a_dir: Io.Dir, a_path: []const u8, b_dir: Io.Dir, b_path: []const u8) !bool {
+    const a = try a_dir.openFile(io, a_path, .{});
+    defer a.close(io);
+    const b = try b_dir.openFile(io, b_path, .{});
+    defer b.close(io);
+    if ((try a.stat(io)).size != (try b.stat(io)).size) return false;
+    var a_buf: [4096]u8 = undefined;
+    var b_buf: [4096]u8 = undefined;
+    var offset: u64 = 0;
+    while (true) {
+        const n = try a.readPositionalAll(io, &a_buf, offset);
+        if (n != try b.readPositionalAll(io, b_buf[0..n], offset)) return false;
+        if (!mem.eql(u8, a_buf[0..n], b_buf[0..n])) return false;
+        if (n < a_buf.len) return true;
+        offset += n;
     }
 }
 
@@ -5484,7 +5519,7 @@ fn updateCObject(
     const gpa = comp.gpa;
     const io = comp.io;
 
-    if (c_object.clearStatus(gpa, io)) {
+    if (c_object.clearStatus(gpa)) {
         // There was previous failure.
         comp.mutex.lockUncancelable(io);
         defer comp.mutex.unlock(io);
@@ -5869,7 +5904,7 @@ fn updateCObject(
         };
         defer o_dir.close(io);
         const tmp_basename = fs.path.basename(out_obj_path);
-        Io.Dir.rename(zig_cache_tmp_dir, tmp_basename, o_dir, o_basename, io) catch |err| switch (err) {
+        renameTmpFileIntoCache(io, zig_cache_tmp_dir, tmp_basename, o_dir, o_basename) catch |err| switch (err) {
             error.Canceled => |e| return e,
             else => |e| return comp.failCObjRetryable(
                 c_object,
@@ -5900,13 +5935,17 @@ fn updateCObject(
 
     const o_basename = try std.fmt.allocPrint(arena, "{s}{s}", .{ o_basename_noext, o_ext });
 
+    // The manifest lock is not kept: `man.deinit` releases it. Holding it while
+    // other objects' manifests are checked lets two compilations that compile
+    // the same objects in a different order deadlock, each waiting for an
+    // exclusive lock on a manifest the other holds. The object file needs no
+    // lock: it is renamed into place atomically and never deleted.
     c_object.status = .{
         .success = .{
             .object_path = .{
                 .root_dir = comp.dirs.local_cache,
                 .sub_path = try fs.path.join(gpa, &.{ "o", &digest, o_basename }),
             },
-            .lock = man.toOwnedLock(),
         },
     };
 
@@ -6147,7 +6186,7 @@ fn updateWin32Resource(comp: *Compilation, win32_resource: *Win32Resource, win32
         var o_dir = try comp.dirs.local_cache.handle.createDirPathOpen(io, o_sub_path, .{});
         defer o_dir.close(io);
         const tmp_basename = fs.path.basename(out_res_path);
-        try Io.Dir.rename(zig_cache_tmp_dir, tmp_basename, o_dir, res_filename, io);
+        try renameTmpFileIntoCache(io, zig_cache_tmp_dir, tmp_basename, o_dir, res_filename);
         break :miss digest;
     };
 
@@ -6163,12 +6202,13 @@ fn updateWin32Resource(comp: *Compilation, win32_resource: *Win32Resource, win32
 
     const res_basename = try std.fmt.allocPrint(arena, "{s}.res", .{rc_basename_noext});
 
+    // The manifest lock is not kept, for the same reason as in `updateCObject`.
     win32_resource.status = .{
         .success = .{
             .res_path = try comp.dirs.local_cache.join(comp.gpa, &[_][]const u8{
                 "o", &digest, res_basename,
             }),
-            .lock = man.toOwnedLock(),
+            .lock = null,
         },
     };
 }
