@@ -85,6 +85,14 @@ Who sees a change: on 64-bit musl and OpenHarmony the alignment drops from
 on 32-bit, 32 to 16 on 64-bit) and its alignment drops to 4 on 64-bit:
 passing it to C was safe before, and code that stores one gets smaller.
 
+Source compatibility: the declaration keeps its shape (one `__size` byte
+array), so `.{ .__size = @splat(0) }`, `std.mem.zeroes(...)` and
+`undefined` compile as they did with 0.17.1. Checked on `x86_64-linux-gnu`,
+`aarch64-linux-musl`, `arm-linux-musleabihf`, `riscv32-linux-gnu`,
+`aarch64-linux-android` and `arm-linux-androideabi`. One form cannot be
+kept: a `__size` value of the old length no longer fits on Android, where
+the array's length is the size being fixed.
+
 Fixed together with std-c-pthread-attr-t-layout,
 std-c-pthread-cond-t-glibc-32bit-underaligned, std-c-sem-t-musl-overaligned
 and std-c-pthread-mutex-t-linux-abi-gaps, which share the comparison and

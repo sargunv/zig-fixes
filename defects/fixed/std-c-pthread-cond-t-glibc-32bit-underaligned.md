@@ -91,6 +91,15 @@ On 64-bit Android the alignment drops from 8 to 4. On 32-bit Android the
 type shrinks from 48 to 4 bytes: passing it to C was safe before, and code
 that stores one gets smaller.
 
+Source compatibility: the declaration keeps its shape (a `data` byte array
+with a zero default), so `.{}`, `.{ .data = @splat(0) }`,
+`std.mem.zeroes(...)` and `undefined` compile as they did with 0.17.1.
+Checked on `x86_64-linux-gnu`, `aarch64-linux-musl`,
+`arm-linux-musleabihf`, `riscv32-linux-gnu`, `aarch64-linux-android` and
+`arm-linux-androideabi`. One form cannot be kept: a 48-byte `data` value no
+longer fits on 32-bit Android, where the array's length is the size being
+fixed.
+
 Fixed together with std-c-pthread-attr-t-layout,
 std-c-pthread-cond-t-glibc-32bit-underaligned, std-c-sem-t-musl-overaligned
 and std-c-pthread-mutex-t-linux-abi-gaps, which share the comparison and

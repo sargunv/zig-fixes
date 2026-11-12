@@ -107,6 +107,17 @@ that stores one gets smaller. On 64-bit Android the mutex and rwlock keep
 their sizes and drop from 8- to 4-byte alignment. The ABIs that did not
 compile now do.
 
+Source compatibility: the declarations keep their shape (`data` byte arrays
+with zero defaults), so `.{}`, `.{ .data = @splat(0) }`,
+`std.mem.zeroes(...)` and `undefined` compile as they did with 0.17.1.
+Checked on `x86_64-linux-gnu`, `aarch64-linux-musl`,
+`arm-linux-musleabihf`, `riscv32-linux-gnu`, `aarch64-linux-android` and
+`arm-linux-androideabi`. One form cannot be kept: a `data` value of the old
+length no longer fits where the mutex's size changed (`riscv32-linux-gnu`,
+`aarch64_be-linux-gnu`, `mips64-linux-gnuabin32`), because the array's
+length is the size being fixed. The `pthread_rwlock_t` change is alignment
+only.
+
 Fixed together with std-c-pthread-attr-t-layout,
 std-c-pthread-cond-t-glibc-32bit-underaligned, std-c-sem-t-musl-overaligned
 and std-c-pthread-mutex-t-linux-abi-gaps, which share the comparison and

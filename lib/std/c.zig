@@ -8365,8 +8365,8 @@ pub const pthread_rwlock_t = switch (native_os) {
 };
 
 pub const pthread_attr_t = switch (native_os) {
-    .linux => extern union {
-        __size: [size]u8,
+    .linux => extern struct {
+        __size: [size - @sizeOf(c_long)]u8,
         __align: c_long,
 
         const size = if (native_abi.isAndroid())

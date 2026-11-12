@@ -54,9 +54,9 @@ zig build-obj -target <t> -fno-emit-bin layout.zig
 as `extern struct { __size: [56]u8, __align: c_long }`. C declares a union
 of the two (glibc `union pthread_attr_t`,
 `lib/libc/include/generic-glibc/bits/pthreadtypes.h:56-60`; musl a union
-inside a struct, `lib/libc/include/generic-musl/bits/alltypes.h:371`), so
-the `c_long` was laid out after the bytes instead of over them. The 56
-bytes are also the 64-bit size. 32-bit C uses 36 (glibc
+inside a struct, `lib/libc/include/generic-musl/bits/alltypes.h:371`) whose
+size is the byte array's, so Zig's struct was larger by the trailing
+`c_long`. The 56 bytes are also the 64-bit size. 32-bit C uses 36 (glibc
 `__SIZEOF_PTHREAD_ATTR_T`, musl `__i[9]`), 32 on glibc `gnux32` and
 `riscv32`, and glibc on aarch64 uses 64. Android's bionic is a struct of
 named fields (`flags`, `stack_base`, ...), 24 bytes on 32-bit and 56 on
@@ -79,21 +79,38 @@ As done; see Fix.
 
 ## Fix
 
-- `lib/std/c.zig`: on Linux, `pthread_attr_t` is an `extern union` of
-  `__size` and `__align: c_long`, as glibc declares it, so both fields
-  sit at offset 0 as in C. `__size` is sized per ABI: Android 24/56; glibc
+- `lib/std/c.zig`: on Linux, `pthread_attr_t` keeps its shape, an
+  `extern struct` of `__size` followed by `__align: c_long`, with `__size`
+  shortened so that the whole struct has C's size: Android 24/56; glibc
   aarch64 64; glibc `riscv32` and `gnux32` 32; otherwise 56 with 8-byte
-  pointers and 36 with 4-byte ones. Emscripten and DragonFly keep the old
-  declaration; they were not compared.
+  pointers and 36 with 4-byte ones. `__size` is that size less
+  `@sizeOf(c_long)`, and the `c_long` gives the struct C's alignment.
+  Emscripten and DragonFly keep the old declaration; they were not
+  compared.
+
+The struct keeps its shape rather than becoming a union like glibc's,
+because the defect is its size and alignment, and the fields are opaque
+through the pthread API, which only takes a pointer. In C, `__align`
+overlaps `__size` at offset 0; here it sits at the end. No caller can
+observe that through the API. Upstream's `master` (at `c9ec343709`) still
+has the 0.17.1 declaration, so there was no upstream shape to follow.
 
 Who sees a change: every Linux target except glibc aarch64 and
 aarch64_be. The type shrinks on all of them: 64 to 56 on 64-bit, 60 to
 36 (32 on `gnux32` and `riscv32-linux-gnu`, 24 on 32-bit Android).
 Shrinking to C's size is safe for code that only passes a pointer to C,
 and code that stores one gets smaller. An `extern struct` embedding one
-now has C's layout, so fields after it move. Code that initialized the
-old struct field by field (`.{ .__size = ..., .__align = ... }`) now
-names one union field; both names are kept.
+now has C's layout, so fields after it move.
+
+Source compatibility: `var a: std.c.pthread_attr_t = undefined;`,
+`std.mem.zeroes(std.c.pthread_attr_t)` and initializers naming both fields
+(`.{ .__size = undefined, .__align = 0 }`, `.{ .__size = @splat(0),
+.__align = 0 }`) compile as they did with 0.17.1. Checked on
+`x86_64-linux-gnu`, `aarch64-linux-musl`, `arm-linux-musleabihf`,
+`riscv32-linux-gnu`, `aarch64-linux-android` and `arm-linux-androideabi`.
+One form cannot be kept: a `__size` value of the old length, such as a
+`[56]u8`, no longer fits on the targets whose size changed, because the
+array's length is what this fixes.
 
 Fixed together with std-c-pthread-attr-t-layout,
 std-c-pthread-cond-t-glibc-32bit-underaligned, std-c-sem-t-musl-overaligned
