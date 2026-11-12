@@ -2604,7 +2604,9 @@ pub const DynamicLinker = struct {
 
             .linux => if (abi.isAndroid())
                 switch (cpu.arch) {
-                    .arm => if (abi == .androideabi) init("/system/bin/linker") else none,
+                    .arm,
+                    .thumb,
+                    => if (abi == .androideabi) init("/system/bin/linker") else none,
 
                     .aarch64,
                     .riscv64,
@@ -2622,7 +2624,9 @@ pub const DynamicLinker = struct {
                     .x86_64,
                     => |arch| if (abi == .ohos) initFmt("/lib/ld-musl-{s}.so.1", .{@tagName(arch)}) else none,
 
-                    .arm => if (abi == .ohoseabi) init("/lib/ld-musl-arm.so.1") else none,
+                    .arm,
+                    .thumb,
+                    => if (abi == .ohoseabi) init("/lib/ld-musl-arm.so.1") else none,
 
                     else => none,
                 }
@@ -2737,6 +2741,8 @@ pub const DynamicLinker = struct {
 
                     .arm,
                     .armeb,
+                    .thumb,
+                    .thumbeb,
                     => initFmt("/lib/ld-linux{s}.so.3", .{switch (abi) {
                         .gnueabi => "",
                         .gnueabihf => "-armhf",
@@ -3800,4 +3806,19 @@ const assert = std.debug.assert;
 
 test {
     std.testing.refAllDecls(Cpu.Arch);
+}
+
+test "DynamicLinker.standard: thumb uses the arm loader" {
+    for ([_]struct { Abi, []const u8 }{
+        .{ .gnueabihf, "/lib/ld-linux-armhf.so.3" },
+        .{ .androideabi, "/system/bin/linker" },
+        .{ .ohoseabi, "/lib/ld-musl-arm.so.1" },
+    }) |case| {
+        const abi, const expected = case;
+        for ([_]Cpu.Arch{ .arm, .thumb }) |arch| {
+            const os = Os.Tag.linux.defaultVersionRange(arch, abi);
+            const dl = DynamicLinker.standard(.baseline(arch, os), .linux, abi);
+            try std.testing.expectEqualStrings(expected, dl.get().?);
+        }
+    }
 }
