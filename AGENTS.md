@@ -53,7 +53,9 @@ A fix is proposed as a pull request from `fix/<slug>` to the line, and
 squash-merged. The branch may hold any number of commits. Whoever merges gives
 the squash commit the fix's message and trailers, in the format under Commits.
 GitHub's default squash message is only right when the pull request holds a
-single commit.
+single commit. The pull request's description is written for its reviewer. It
+is not the commit message and carries no trailers, so check trailers on the
+commits, not on the description.
 
 ## The backlog
 
