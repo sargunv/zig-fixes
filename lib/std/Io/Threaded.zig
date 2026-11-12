@@ -11820,6 +11820,16 @@ fn fileWriteFilePositional(
             error.Canceled => |e| return e,
             else => break :fcf,
         };
+        // fcopyfile does not support pipes and sockets. It fails with BADF,
+        // or INVAL once the input is at its end, after reading the input.
+        const out_stat = fileStatPosix(t, file) catch |err| switch (err) {
+            error.Canceled => |e| return e,
+            else => break :fcf,
+        };
+        switch (out_stat.kind) {
+            .named_pipe, .unix_domain_socket => break :fcf,
+            else => {},
+        }
         if (header.len != 0 or reader_buffered.len != 0) {
             const n = try fileWritePositional(t, file, header, &.{limit.slice(reader_buffered)}, 1, offset);
             file_reader.interface.toss(n -| header.len);
@@ -11851,7 +11861,7 @@ fn fileWriteFilePositional(
                         .INVAL => |err| errnoBug(err),
                         else => |err| posix.unexpectedErrno(err),
                     });
-                    return 0;
+                    return error.Unimplemented;
                 },
             }
         }

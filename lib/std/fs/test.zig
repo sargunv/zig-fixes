@@ -2521,6 +2521,37 @@ test "File.Writer sendfile with buffered contents" {
     try expectError(error.EndOfStream, check_r.interface.takeByte());
 }
 
+test "File.Writer sendFileAll to a pipe" {
+    if (native_os == .windows or native_os == .wasi) return error.SkipZigTest;
+
+    const io = testing.io;
+
+    var tmp_dir = testing.tmpDir(.{});
+    defer tmp_dir.cleanup();
+
+    try tmp_dir.dir.writeFile(io, .{ .sub_path = "a", .data = "abcd" });
+    const in = try tmp_dir.dir.openFile(io, "a", .{});
+    defer in.close(io);
+
+    const fds = try std.Io.Threaded.pipe2(.{ .CLOEXEC = true });
+    const read_end: File = .{ .handle = fds[0], .flags = .{ .nonblocking = false } };
+    defer read_end.close(io);
+    const write_end: File = .{ .handle = fds[1], .flags = .{ .nonblocking = false } };
+    defer write_end.close(io);
+
+    var in_buf: [2]u8 = undefined;
+    var in_r = in.reader(io, &in_buf);
+    var out_buf: [2]u8 = undefined;
+    var out_w = write_end.writer(io, &out_buf);
+    try expectEqual(4, try out_w.interface.sendFileAll(&in_r, .unlimited));
+    try out_w.interface.flush();
+
+    var check_buf: [4]u8 = undefined;
+    var check_r = read_end.readerStreaming(io, &.{});
+    try check_r.interface.readSliceAll(&check_buf);
+    try expectEqualStrings("abcd", &check_buf);
+}
+
 test "readlink on Windows" {
     if (native_os != .windows) return error.SkipZigTest;
 
