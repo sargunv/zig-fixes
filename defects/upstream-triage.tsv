@@ -1,0 +1,629 @@
+number	decision	priority	area	ref	title	reason
+37626	list	2	lib/std	-	std.mem.Allocator fails on structs with lots of fields	isInstantiable loops over fields under the default 1000-branch quota; only structs with more than about 1000 fields hit it
+37623	list	3	compiler	-	sema: bad error on @fieldParentPointer not having @alignCast	Error-message quality only: alignment notes print log2 values.
+37621	list	2	compiler	-	`catch |err| switch (err)` causes error with comptime var despite being in a comptime block	False compile error from the switch_block_err_union lowering in a comptime block; parens work around it
+37620	file	1	lib/std	cb37620-threaded-devnull-fd-no-cloexec.md	Threaded spawn leaks its cached /dev/null fd into children	getDevNullFd opens /dev/null without O_CLOEXEC (Threaded.zig:15596), so every child inherits it
+37617	list	3	compiler	-	Incremental bug: "referenced transitive analysis errors, but none actually emitted"	Crash only under -fincremental --watch; incremental is out of scope.
+37616	list	2	lib/std	-	`std.http.Client.fetch` results in attempt to use a null value	std.http fetch panics on bodyErr().? when the nested TLS/socket reader fails (same root cause as 36296); package fetch does not use bodyErr.
+37615	skip	-	-	-	WebAssembly multi-memory support through contextual address spaces	Language proposal
+37600	skip	-	-	-	Meta-Proposal: My vision for and problems with SIMD in Zig	Proposal and design discussion
+37599	list	2	lib/std	-	`Reader.discardAll()` integer overflow	seek + n overflows for huge n instead of returning EndOfStream; an edge case
+37597	list	2	lib/std	-	std.Io.failing.checkCancel() crashes	Io.failing marks checkCancel and other reachable vtable entries unreachable; only test Io is affected
+37594	skip	-	-	-	add netrc parsing support for package manager	Feature request
+37590	file	1	lib/std	cb37590-mem-swap-noalias-self-swap-miscompile.md	std.mem.swap takes noalias pointers, so swapping a location with itself is illegal behavior, and std.sort does it	Reproduced on 0.17.1: std.sort.heap sorts wrongly in ReleaseSafe/ReleaseFast because of a noalias self-swap
+37589	list	2	lib/std	-	dir walker deinit does not free handles if we stop in the middle of the walk	Walker.deinit leaks open directory handles when a walk stops early; deinit takes no io so cannot close them.
+37588	list	2	lib/std	-	std.os.linux: `capget` and `capset` take one `cap_user_data_t`, but the kernel uses two	Wrong syscall wrapper signature lets the kernel write past the buffer; rarely used Linux API
+37586	file	1	lib/std	cb37586-threaded-future-result-overalignment-overflow.md	std.Io.Threadedで16-byte整列の戻り値を持つFutureの解放時にinvalid freeが発生する	Reproduced on 0.17.1: Future.create undersizes the allocation for over-aligned results and corrupts the heap
+37584	list	3	compiler	-	`-fincremental` is orders of magnitude slower and seems to recompile many things from scratch	Incremental compilation performance
+37583	list	3	build-system	-	`zig build --watch` leaks and fails with `Unexpected` and panics with `-fincremental`	--watch fails on a kernel built without CONFIG_FANOTIFY (ENOSYS); exotic kernel config, reporter fixed by enabling it.
+37579	file	1	lib/std	cb37579-aarch64-linux-cpu-detect-sigill.md	illegal instruction of compiler itself on aarch64 !	aarch64 Linux native CPU detection runs mrs MIDR_EL1 without checking HWCAP_CPUID, causing SIGILL on old kernels and Android
+37577	file	1	lib/std	cb37577-acosh-negative-input-not-nan.md	std.math.acosh() doesn't return nan for some x < 1	Reproduced on 0.17.1; wrong acosh for negative inputs is also exported as musl/wasi acoshf, and bundled musl acosh.c has the same bug.
+37575	file	1	zig-cc	cb37575-ubsan-rt-missing-assume-builtin-kind.md	ubsan_rt panics on false __builtin_assume with "invalid enum value"	ubsan_rt InvalidBuiltinData.kind lacks clang's AssumePassedFalse, so zig cc Debug builds report the wrong panic or crash
+37567	list	3	lib/std	-	`BLAKE3 parallel vs sequential` flaky failure on `aarch64-netbsd`	Flaky BLAKE3 parallel test seen only on aarch64-netbsd CI; maintainer could not reproduce.
+37564	skip	-	-	-	Dogfood the self-hosted WebAssembly backend when generating zig1.wasm	Upstream bootstrap infrastructure idea
+37562	list	3	codegen	-	SPIR-V backend crashes when accessing an element of constant array of sampled images	SPIR-V self-hosted backend crash; exotic backend.
+37557	list	2	lib/std	-	`zig build` package fetch fails with `TlsInitializationFailed` when two dependencies share a host (deps.files.ghostty.org); each alone succeeds	Concurrent TLS fetches to one Cloudflare host fail on reporter machine; not reproduced on 0.17.1 macOS (3/3 fetched), cause unknown.
+37553	list	2	linker	-	Self-hosted ELF linker silently ignores --version-script	Only the self-hosted ELF linker (Debug x86_64-linux) ignores it; LLD honors it, upstream plans to drop version scripts and -fvisibility=hidden is the workaround.
+37550	list	2	codegen	-	x86_64 SysV: LLVM backend passes 16-byte extern structs wrongly when the C function also has float arguments	Reproduced on 0.17.0 under Rosetta, fixed in 0.17.1 by fa5d54e74c (x86_64-SysV register exhaustion fix); verified correct on 0.17.1.
+37548	file	1	compiler	cb37548-ptr-sub-anyopaque-crash.md	*anyopaque - *anyopaque segfault	Compiler crash reproduced on 0.17.1 (exit 133); abiSize called on opaque type.
+37547	list	3	codegen	-	Running `comptimePrint` with a SPIR-V target crashes the compiler	SPIR-V self-hosted backend crash; exotic backend.
+37546	file	1	lib/std	cb37546-darwin-io-over-2gib-einval.md	File read/write operations >= 2GiB fail on macOS with an "Invalid argument" exception	Reproduced on 0.17.1: Darwin read/write >INT_MAX returns EINVAL (panic in Debug, Unexpected in release).
+37545	list	2	lib/std	-	`MemoryMap.setLength` does not update the underlying file length	MemoryMap.setLength does not extend the file, losing data or causing SIGBUS; intended semantics still unsettled.
+37537	file	1	build-system	cb37537-system-mode-cached-tarball-assert.md	`zig build --system` panics with "reached unreachable code" when a lazy dependency is missing from the system directory but its tarball is in the global cache	Reproduced on 0.17.1: --system with lazy dep only in global cache hits assert(!read_only) in Fetch.runResource.
+37534	list	2	linker	-	`zig build-lib` cannot set a dylib's compatibility_version, it is always 1.0.0	Missing option plus odd 1.0.0 default for Zig-built dylibs; zig cc can set it and dyld does not fail on it.
+37533	file	1	codegen	cb37533-llvm-zmm-clobbers-dropped.md	Throw an error when inline assembly clobbers values LLVM silently throws away	zmm clobbers dropped on non-AVX-512 x86_64 (reproduced on 0.17.1); std.Io fiber contextSwitch clobbers only zmm.
+37531	list	3	compiler	-	Flaky `test\incremental\tag_name` failure on `x86_64-windows`	Upstream CI flake in the incremental test harness (FileBusy).
+37527	list	2	codegen	-	Miscompile on Linux with x86-64 Debug compiler backend	Self-hosted x86_64 backend miscompile; the target matrix uses LLVM.
+37513	list	2	compiler	-	Architecture dependent segfault when compiling a function pointer with anyerror type	Segfault not reproduced on 0.17.1 for aarch64-freestanding; remaining defect is accepting anyerror!void with callconv(.c).
+37511	skip	-	-	-	Compilation errors with sse disabled	Maintainer: use a soft-float ABI (.abi = .eabi) when disabling SSE; working as intended
+37510	list	2	lib/std	-	http client failure when running under valgrind	std.http/TLS read gets EndOfStream only under valgrind; std.http area, cause unclear
+37507	list	3	lib/std	-	`std.Io`: futex APIs are broken for `m68k-linux`	m68k-linux futex alignment; exotic arch, upstream wants a language change.
+37506	list	2	compiler	-	Error return trace is incorrectly retained	Long-standing error-return-trace bookkeeping bug that adds stale frames; diagnostic only
+37503	list	2	lib/std	-	`std.Io.File.stdout().length()` silently returning 0 on linux for non-file stream rather than raising `Streaming StatError`	File.length returns 0 for ttys and pipes instead of error.Streaming
+37500	list	2	codegen	-	Self-hosted: compiler crash when trying to access field structs via assembly	Self-hosted x86_64 backend crash on struct asm input.
+37499	skip	-	build-system	-	`Illegal instruction at address 0x1018f89` when running the test suite on older CPUs	Upstream test harness runs x86_64_v3 behavior tests on an older CPU; use -Dskip-non-native.
+37498	list	3	codegen	-	SPIR-V: `physical_storage_buffer` slice ptrs are not decorated with `ArrayStride`	SPIR-V backend validation error; exotic backend.
+37493	list	3	codegen	-	lld rejects .eh_frame emitted by -fincremental	Only with -fincremental and self-hosted backend output fed to lld.
+37492	list	2	linker	-	-fno-llvm produces a much larger binary than -fllvm for the same source	Self-hosted x86_64 backend and COFF linker output size on Windows
+37483	list	3	codegen	-	Codegen options for Linux kernel modules (retpoline/SLS regressed in #37404)	The regression is only on 0.18-dev (after #37404); the rest are feature requests for kernel-module codegen flags
+37481	list	2	codegen	-	Self hosted backend insert linktime dependencies on comptime only symbols	Self-hosted backend only; LLVM backend is correct.
+37479	list	2	linker	-	Self-host linker fails to resolve `_TLS_MODULE_BASE_` when static link `clang_rt.asan`	Self-hosted ELF linker with an external asan runtime; use_llvm works.
+37477	list	2	codegen	-	MacOS self-hosted backend freezes computer	Self-hosted aarch64 backend assertion and runaway memory; the backend is known to be incomplete
+37475	list	3	compiler	-	Zcu: crashes rendering dependency loop from function parameter type to function	Not reproduced on 0.17.1 (renders the loop error); crash is in 0.18-dev error rendering code.
+37474	file	1	build-system	cb37474-shared-cache-manifest-deadlock.md	Deadlock when sharing a cache between concurrent builds	Reproduced on 0.17.1 (3/3): concurrent builds sharing a cache dir deadlock on manifest locks
+37471	skip	-	-	-	Drop support for `aarch64-watchos-ilp32`	Deprecation proposal, not a defect
+37470	skip	-	-	-	Drop support for `arm-linux-androideabi` and `x86-linux-android`	Deprecation proposal (affects the matrix's Android arm/x86 targets in 0.18+; worth watching)
+37463	list	2	codegen	-	LLVM/C: `0xaa` bytes not correctly set in optionals and error unions when runtime safety is enabled	Reproduced on 0.17.1 but only affects the 0xaa debug fill of undefined values, which programs must not rely on.
+37462	file	1	codegen	cb37462-llvm-export-zero-length-array-panic.md	LLVM: `TODO: export zero-bit value` when exporting zero length array	LLVM backend compiler panic, reproduced on 0.17.1.
+37459	skip	-	build-system	-	std.Build.Graph.incremental no longer exists	Removal of b.graph.incremental in the configurer/maker split; API change, not a defect.
+37453	list	3	linker	-	Elf2 sometimes fails to respect `linksection`	Only with -fincremental (Elf2 linker).
+37448	list	3	codegen	-	`behavior.var_args.test.overflowed frame varargs miscompiles` on `x86-windows-gnu` LLVM 23	32-bit x86-windows varargs, reported with LLVM 23 (0.17.1 uses LLVM 22); outside target matrix.
+37442	list	3	compiler	-	[Error message] In Zig, "or" between two booleans is written with the keyword `or`, not `||`	Error-message quality only.
+37439	list	3	compiler	-	labeled block type mismatch missing notes	Error-message quality only.
+37431	list	3	codegen	-	`behavior.var_args.test.overflowed frame varargs` miscompiles on `powerpc-linux-eabihf` LLVM 23	PowerPC LLVM 23 bug with upstream fix; 0.17.1 uses LLVM 22.
+37430	list	2	codegen	-	LLVM backend: invalid debug info for arguments of generic functions	Wrong DILocalVariable line for generic-function args; debug-info quality only.
+37420	list	3	compiler	-	compiler build for riscv64-linux-debug exceeds the 8GB max_rss bound	Upstream CI memory bound when building the compiler itself
+37405	list	2	lib/std	-	Multiple problems in std.Io.File.{Reader,Writer} caused by internal seekBy/seekTo/getSize	File.Reader/Writer swallow seek errors, so err can be null after ReadFailed/WriteFailed and cancellation is lost.
+37402	file	1	bundled-libc	cb37402-zigc-strchr-quadratic.md	strchr and friends in lib/c read the whole string before searching	libzigc strchr/strchrnul call mem.len first, quadratic for musl zig cc code; code present at 0.17.1.
+37401	list	2	compiler	-	Incorrect constant assignment code generated	Anonymous struct literal assigned through a volatile packed-struct pointer is stored field by field (result location semantics); matters for MMIO
+37399	list	2	codegen	-	`@branchHint(.cold)` on an if branch has no effect on code layout	Missed optimization (no branch weights for .cold), not wrong code.
+37379	list	2	lib/std	-	std.fmt.parseFloatrounds() rounds some subnormal ties away from even	parseFloat rounds some f16 subnormal ties away from even; upstream float rewrite pending.
+37376	skip	-	-	-	autodoc: clicking on [src] for a definition should take you to relevant line in source	Autodoc feature request
+37365	skip	-	-	-	Add a new optimize mode: `safe-small`	Proposal
+37353	list	2	lib/std	-	std.crypto.tls.Client: does not enforce intermediate certificates to be CAs	TLS client skips the basicConstraints CA check; same as codeberg#35877, which already has cb35877-tls-ca-basic-constraints-unchecked.md
+37344	skip	-	build-system	-	build system test harness	Upstream test-harness infrastructure for the build system.
+37341	file	1	codegen	cb37341-aarch64-cabi-aligned16-struct-regs.md	aarch64 C ABI lowers i128 incorrectly when wrapped in struct	Reproduced on 0.17.1: extern struct{i128} after 5 i64 read from x5/x6 vs clang x6/x7 on aarch64-linux and -windows.
+37338	list	2	compiler	-	Cache miss when rebuilding project after zig init on aarch64 Linux	Nondeterministic output binary on an aarch64 Linux host causes alternating cache misses; cause unknown
+37331	list	3	compiler	-	anArray[start..end :sentinel] should not compile if start is a runtime value and end is a comptime value and end == anArray.len	A missing compile-time bounds check; a runtime safety panic still catches it
+37328	list	3	lib/std	-	Memory leak when in nix shell.	Environment-specific memory growth; not reproduced by others; too vague
+37314	list	3	codegen	-	SPIR-V: unused runtime-array structs emitted without Block decoration fail Vulkan validation	SPIR-V backend validation error; exotic backend.
+37313	list	3	build-system	-	zig 0.17 compilation fails on IBM POWER (ppc64le) - "maker" file missing	Bootstrap failure on ppc64le, an exotic host
+37312	skip	-	lib/std	-	rename std.json `allocator` parameters to `gpa` or `arena`	Reported leak is intended for arena-only leaky json APIs; issue is now a parameter rename.
+37311	skip	-	lib/std	-	Iterate on directory without `iterate` options works on macOS and panics on Linux	Iterating a directory opened without .iterate violates the API contract; asks only for an assert.
+37306	list	2	lib/std	-	Incorrect CPU feature detection on Android	SVE wrongly detected on Android hosts (v9a implies sve); only affects running Zig/native builds on such devices; upstream fix is part of a large 0.18 CPU-feature rework.
+37288	list	3	linker	-	lld: .data* and .bss* sections overflowed with 2^24 bytes when using custom linker script on ARM/Thumb arch	Regression after 0.17.0; does not reproduce on 0.17.1, and arm-freestanding only.
+37280	list	2	build-system	-	Cache miss in child dependency of dependency in 0.17.x	False cache misses of dep-of-dep on macOS seemingly triggered by an editor touching files; cause unknown, maintainer working on it for 0.18.
+37277	list	2	build-system	-	`Hash.toSlice` panics on return of `Package.initPath` when `sub_path` is empty and `is_global` is false	Hash.toSlice overflow is reached via validateFingerprints, which 0.17.1 does not have (reverted on 0.17.x).
+37236	list	2	build-system	-	bsp: file watching waits forever on windows	Build-server-protocol file watching never fires on Windows; LSP-only path on a non-development host.
+37235	list	2	compiler	-	Compiler SEGV when iterating over a slice of a comptime field	Did not reproduce on 0.17.1 (LLVM and self-hosted x86_64 compile it); reported on 0.18-dev
+37221	list	2	compiler	-	Comptime array reads use ~4× more compiler RSS than pointer reads	Comptime memory use; upstream says PR #36625 fixes it
+37220	list	2	lib/std	-	`std.http.Server.respond()` swallows cancellation request via `discardBody()`	std.http server cancellation handling
+37217	list	2	build-system	-	Maker panics on a second build request: `attempt to unwrap error: Closed`	Race in zig build --listen loop (cancelDiscard closes select queue) panics on repeated requests; affects language servers only.
+37207	list	3	codegen	-	SPIR-V: Pointer in `extern struct` Used in `.push_constant` Address Space Crashes the Compiler	SPIR-V backend crash; exotic backend.
+37205	file	1	codegen	cb31022-llvm-asm-memory-constraint-operand.md	Compile issue on LLVM with memory asm	Same "m" constraint lowering bug as cb31022 (reproduced on 0.17.1); covered by that file.
+37204	file	1	build-system	cb37204-run-stdin-brokenpipe-null-unwrap.md	Maker.Step.Run: panic "attempt to use null value" when child exits before consuming all of stdin (BrokenPipe)	Run step unwraps null File.Writer.err after a sendfile BrokenPipe on Linux; code confirmed at 0.17.1 (macOS gives a clean error).
+37192	list	2	lib/std	-	std.Io.Threaded: a cancel is lost when Group.async runs a task inline	Io.Threaded Group.async running a task inline discards error.Canceled, making HostName.connect uncancelable under load.
+37190	list	3	compiler	-	Wrong error with missing `for` capture variable	Error-message quality only (AstGen).
+37189	list	3	build-system	-	zig build -Dsomething : available options list is intrusive in case of wrong option type	Build-system diagnostic ordering/verbosity only.
+37167	list	3	build-system	-	--fuzz=[limit] exits with success code when finding a failure	Fuzzing exit code
+37165	list	2	build-system	-	recompressing dependencies shouldn't block the rest of the build	Recompressing fetched packages blocks the build; performance only.
+37149	file	1	compiler	cb37149-module-root-depends-on-cwd.md	Module path depends on cwd	Reproduced on 0.17.1: zig build from a project subdirectory fails with import of file outside module path
+37143	list	3	lib/std	-	std.zon: unsupported type in a nested field gives "reached unreachable code" / names only the top-level type	Error-message quality in std.zon.
+37136	skip	-	build-system	-	std.Build.reference_trace no longer exists	b.reference_trace field removed in the configurer split; API change, not a defect.
+37128	list	3	codegen	-	Many ML-KEM tests fail on `spacemit_x100`	LLVM 23.1.2 riscv64 miscompile for one CPU, fixed in LLVM 23.1.3; 0.17.1 uses LLVM 22.
+37125	list	3	codegen	-	CBE emits C that cannot compile for vector inline assembly operands	C backend only; -ofmt=c is out of scope.
+37121	list	3	codegen	-	Some `std.crypto.pcurves.tests.secp256k1` tests failing on PowerPC after LLVM 23	PowerPC LLVM 23 regression; not in 0.17.1 (LLVM 22).
+37103	list	2	lib/std	-	Runtime crash when formatting certain floating point precisions	Decimal float formatting with precision around 340+ panics with index out of bounds; edge case.
+37098	list	2	lib/std	-	fileReadPositionalPosix doesn't handle EBUSY	EBUSY from sysfs reads maps to error.Unexpected; minor error-mapping gap.
+37097	list	2	compiler	-	Sema unreachable on `runtime_store` at comptime	On 0.17.1 release compiler gives a bogus "comptime field" error instead of crashing; debug compiler hits unreachable.
+37096	list	2	codegen	-	x86 asm: Memory operand fails to parse when size is implicit	Self-hosted x86_64 inline assembler limitation; LLVM handles it.
+37094	list	2	build-system	-	zig fetch panics on a tarball containing an absolute or ../ entry name	Reproduced on 0.17.1: zig fetch panics (unreachable) on tarball entries with absolute or ../ names; such tarballs are rare.
+37090	list	3	bundled-libc	-	compiler_rt fails to compile for AVR	AVR only.
+37086	list	3	codegen	-	spirv backend omits comptime debug info	SPIR-V backend only.
+37056	list	3	codegen	-	`compiler_rt.udivmodei4.test.__udivei4/__umodei4` segfault on sparc64 after LLVM 23	sparc64 LLVM 23 issue; exotic arch and not in 0.17.1.
+37054	list	2	build-system	-	A failed fetch leaves its `.tmp-*` directory behind, in `zig-pkg/` with `--save`	Reproduced on 0.17.1: failed fetch leaves .tmp-* dir behind; disk leak only, noted in cb37053.
+37053	file	1	build-system	cb37053-fetch-without-save-caches-nested-tarball.md	`zig fetch` without `--save` leaks the package into `tmp/` and caches a broken tarball	Reproduced on 0.17.1: zig fetch without --save leaves tmp/ and caches a nested tarball, causing hash mismatch later.
+37046	file	1	compiler	cb37046-extern-union-void-field-crash.md	Initialize the `void` field in `extern union` to cause compiler SIGSEGV.	Compiler segfault reproduced on 0.17.1 (exit 139) on plausible binding code.
+37045	list	2	compiler	-	`@This()` refers to the tag type in a tagged unions field value	Minor wrong scoping of @This() in enum tag value expressions.
+37039	skip	-	lib/std	-	std lib types' custom formatting not respecting alignment specifier	Custom format functions not honouring width/alignment is a feature request.
+37033	list	3	compiler	-	Recursive type definitions cause the compiler to hang	Hang on infinitely recursive generic type; contrived, no recursion limit.
+37027	list	2	build-system	-	`zig fetch` fails on BusyBox repos with `ProtocolError` and `UnsupportedProtocol`	Git fetch fails against servers without git protocol v2 (busybox.net); uncommon hosts.
+37024	list	2	lib/std	-	`std.http.Client` never sends `privileged_headers`	std.http.Client never writes privileged_headers.
+37021	list	2	lib/std	-	zig fetch error: unable to unpack tarball when tar contains hard links	std.tar does not extract hard links, so some toolchain tarballs cannot be fetched; feature gap, unfixed on master.
+37019	skip	-	linker	-	link: src/link/tapi/yaml.zig does not compile	Unreferenced dead code in the compiler tree; no user-visible effect.
+37018	list	2	codegen	-	Passing a nested `struct` produces garbage for `arm-linux-musleabihf`	Possible arm hard-float C ABI bug with nested structs, but the repro sources were attachments missing from the issue text
+37017	list	2	lib/std	-	f16 precision is lost in std.fmt.float.render	f16 formatting with explicit precision prints wrong digits; upstream float rewrite pending.
+37009	skip	-	lib/std	-	Do not print '+' or '-' when specifying format string {b}	Sign in signed binary/hex formatting is intended and tested behaviour.
+37005	list	2	compiler	-	Miscompilation with subtraction of pointer to comptime_int	Reproduced on 0.17.1 (logs false) but confined to comptime pointer arithmetic on comptime_int arrays.
+37003	list	3	build-system	-	`zig init` produces code that can't compile when the directory name collides with an identifier in the template (eg: `main`)	zig init template name collision; cosmetic
+36987	list	2	build-system	-	false cache miss when WriteFiles depends on WriteFiles	Occasional false cache miss for WriteFiles chains from the problematic-timestamp rule; extra work only.
+36986	list	2	linker	-	some self-hosted linkers do not allow strong `@export`s to override weak ones	Remaining cases are C backend and self-hosted wasm/Mach-O; LLVM path passes on 0.17.1.
+36982	file	1	compiler	cb36982-switch-ptr-capture-loads-whole-union.md	switch (self.*) with pointer capture copies tagged-union payload, causing a data race before locking	Switch on ptr.* loads the whole union to read its tag (a data race under TSAN); regression since 0.16; upstream Urgent
+36981	list	2	codegen	-	x86_64 self-hosted backend: SHA-256 with SHA-NI is 30x slower than LLVM and 2.2x slower than the pure software fallback	Self-hosted x86_64 backend lacks vzeroupper (performance)
+36976	list	2	lib/std	-	flushing for http.respondStreaming does not appear to flush	std.http.Server respondStreaming flush does not flush and endChunked drops buffered bytes.
+36969	file	1	lib/std	cb36969-smp-allocator-cross-thread-free-rss-growth.md	SmpAllocator does not reuse freed small allocations when threads are created and destroyed frequently, causing unbounded RSS growth	Reproduced on 0.17.1 (193 MB RSS for 400 KB live); also the zig cc static musl malloc.
+36949	list	2	lib/std	-	`std.process.currentPath`/`currentPathAlloc` cannot always retrieve deeply nested cwds	cwd longer than PATH_MAX cannot be retrieved on Linux; edge-case limitation.
+36946	list	2	compiler	-	compiler frontend queues link inputs in non-deterministic order	Affects linkers fed by prelink (self-hosted ELF/COFF/MachO2); LLD and legacy Mach-O in 0.17.1 do not use it.
+36944	list	2	compiler	-	slice op should not be able to add a sentinel after the last element of comptime known input	Accepts invalid comptime sentinel slice; runtime path is safety-checked.
+36939	skip	-	lib/std	-	std.testing.random_seed is too small	Request to widen std.testing.random_seed to u64; enhancement.
+36931	list	2	lib/std	-	`std.http.Client.fetch()` is not cancelable	std.http.Client.fetch cannot be canceled and hangs on cancel.
+36926	skip	-	-	-	Cap @Vector sizes based on total bitsize, and limit it to reasonable sizes	Proposal
+36919	file	1	zig-cc	cb36919-native-libc-requires-gcc-crtbegin.md	Building zig fails on linux system without GCC	0.17.0 regression: zig cc and -lc fail with LibCRuntimeNotFound on Linux hosts without GCC crtbeginS.o.
+36917	list	2	lib/std	-	`std.os.linux.IoUring` has unsupported flags	std.os.linux.IoUring ignores NO_MMAP/SQE128/CQE32 setup flags; io_uring is out of scope.
+36914	list	2	lib/std	-	JSON stringify still returning Inf and Nan for Floats	json.Stringify emits inf/nan, which RFC 8259 forbids.
+36899	list	2	build-system	-	Race condition when `addRunArtifact` is used along with `addInstallArtifact` but the run step does not depend on the install step	Run artifact path races with an unrelated install step (gh#22117); nondeterministic but stems from a misdeclared graph.
+36897	list	3	lib/std	-	Io.operateTimeout should cancel Batch on error.Timeout	operateTimeout leaves the batch in flight with Io.Uring; experimental evented backend.
+36893	list	2	lib/std	-	Integer overflow in std.Io.Writer.countSplat()	Writer.countSplat and Reader discard/stream byte counters overflow for huge splats or >4 GiB streams on 32-bit.
+36888	list	2	compiler	-	@sqrt result differs between comptime and runtime	Comptime NaN bit pattern depends on host; minor determinism issue.
+36886	list	2	lib/std	-	DynLib erroneously assumes elf class at compile time	DynLib assumes the host ELF class and may load a 32-bit library from /lib; partial fix on master.
+36878	file	1	lib/std	cb36186-resolv-conf-ipv6-zone-index.md	error.ResolvConfParseFailed / error.InterfaceNotFound when /etc/resolv.conf contains link-local ipv6 with numeric interface id	Same bug as 36186 (closed upstream as its duplicate); covered by that file.
+36875	skip	-	compiler	-	Inferred error set of generic functions	API design discussion (error_set should be ?type).
+36869	skip	-	lib/std	-	typo in function `std.Uri.isSubLimit` name?	Naming nit for std.Uri.isSubLimit.
+36862	list	3	codegen	-	Fuzzer is broken on 64-bit PowerPC	Fuzzing on powerpc64, upstream LLVM bug.
+36856	list	2	lib/std	-	zig fmt incorrectly indents function arguments with trailing commas in method chains	zig fmt indentation bug; cosmetic.
+36855	list	2	compiler	-	Referring to the bound name within a generic type behaves differently from `@This()` and causes uneeded instantiations	Closure capture semantics cause extra instantiations; not a crash.
+36848	file	1	linker	cb36848-macho-subtractor-rebase.md	MachO linker writes a wrong rebase entry into __TEXT,__text for a SUBTRACTOR+UNSIGNED relocation pair	Mach-O rebase for subtractor pairs corrupts text; reproduced on 0.17.1.
+36842	file	1	lib/std	cb36842-windows-https-fetch-io-timeout.md	`zig fetch` fails with `TlsInitializationFailed` error on windows	zig fetch fails over HTTPS on some Windows hosts (IO_TIMEOUT/TlsInitializationFailed); package fetching on Windows.
+36830	list	2	lib/std	-	std.http.Client: does not handle 204 No Content responses correctly	std.http.Client hangs on 204 No Content responses without Content-Length.
+36821	skip	-	compiler	-	@TypeOf(@call(fn, .{})) should short circuit type resolution if the return type of the function is known	Feature request for lazier analysis.
+36803	skip	-	build-system	-	`dependOnFileContents` fails the build when the file does not exist	Question/design: whether dependOnFileContents should accept a missing file.
+36802	skip	-	build-system	-	`addIncludePath` does not require the path to exist but `addLibraryPath` does	API consistency/design request about optional include and library paths.
+36801	list	3	lib/std	-	Io.Uring Io.Group assert on double cancel and group reuse	Io.Uring Group asserts on double cancel and reuse; experimental evented backend.
+36791	list	2	build-system	-	getEmittedBin() as a heuristic for determining whether to pass `-femit-bin` to compiler causes false positives	getEmittedBin() forces -femit-bin even when the consuming step is not requested; extra work only.
+36783	list	2	lib/std	-	std.http.Client: open a new connection when an existing one is closed by the server	std.http.Client returns HttpConnectionClosing instead of reopening a pooled connection the server closed.
+36772	list	2	codegen	-	Potential miscompilation - Weird behaviour in packed structs sometimes reading bits outside the logical bit size of the struct in self hosted backend	Self-hosted x86_64 backend miscompile; LLVM fine.
+36768	list	3	compiler	-	Zig accepts invalid UTF-8	Tokenizer accepts invalid UTF-8 against the spec; low impact
+36766	list	3	codegen	-	CBE module tests fail on `aarch64-openbsd`	C backend on OpenBSD; exotic.
+36756	list	3	compiler	-	`note:` on wrong token when `switch`-ing on runtime known value with comptime known result	Error-message location only.
+36745	skip	-	lib/std	-	No way to format `std.Io.net.IpAddress` without port	Feature request for formatting an IP address without its port.
+36736	list	2	compiler	-	Zig Compiler Segmentation Fault When Compiling Infinite "While" Loop	Crash reproduced on 0.17.1 but needs `continue` inside a continue expression; contrived.
+36729	skip	-	lib/std	-	doubious comment on Io.Writer.VTable.sendFile's limit arguement	Question about a doc comment on Writer.VTable.sendFile.
+36723	file	1	target-defs	cb36723-arm-softfloat-neon-left-enabled.md	CPU feature hacks in `std.zig.system` can incorrectly leave disabled features marked as enabled	Reproduced on 0.17.1 for arm androideabi/ohoseabi: neon stays enabled after vfp2 removal; fixed on master in 6c92a9ea64.
+36717	skip	-	lib/std	-	std.Io.sleep: integer overflow	Overflow is in user code multiplying a u32 by a comptime_int constant, not in std.
+36702	skip	-	codegen	-	AIR: optimize `.expand_array_splat` legalize option, work on removing this legalization in backends	Codegen-quality refactoring task, not a defect.
+36698	list	2	lib/std	-	`net.Ip4Address.fromAny` returns Ip6Address instead of Ip4Address	Already fixed at 0.17.1 (fromAny returns ?Ip4Address); nothing to do.
+36697	list	2	lib/std	-	std.crypto RSA PSS Signature verify & concatVerify	RSA-PSS verify and concatVerify disagree on the signature argument; crypto.
+36689	list	2	lib/std	-	`Reader.peekDelimiterInclusive` does not support reader implementations that write to their own buffer	peekDelimiterInclusive loops forever on readers that write into their own buffer; no clean fix agreed.
+36688	list	3	lib/std	-	Native ABI detection needs to inspect the ELF file header/attributes	Native float-ABI detection for NetBSD and mips/arm Linux hosts; exotic hosts.
+36684	file	1	linker	cb36684-macho-n-indr-segfault.md	MacOS linker segfaults on N_INDR	Mach-O linker segfault / bad binary on .set aliases; reproduced on 0.17.1.
+36680	list	2	codegen	-	Unable to debug local variables in functions with "void" return type on LLVM backend on Windows	Debug-info quality on Windows; no wrong code.
+36675	list	3	lib/std	-	`std.Io.Duration` panic: integer does not fit in destination type	Duration.toMilliseconds panics only for durations over about 300,000 years.
+36666	list	2	lib/std	-	`std.debug.Trace.dump` incorrectly trims the captured frames	debug.Trace.dump trims each stack trace by the trace count; debug output only.
+36649	list	3	lib/std	-	`http.test.test.general client/server API coverage` is flaky on NetBSD	Flaky std.http test on NetBSD CI; exotic OS.
+36640	skip	-	-	-	Track bugs via tests to solve the problem of stale bug reports	Upstream process proposal
+36613	file	1	codegen	cb36613-llvm-tail-call-byref-arg-poison.md	[Miscompilation] [LLVM] tail-calling a function with aggregate type argument results in poison in `Release`	Reproduced on 0.17.1 aarch64 and x86_64: always_tail with struct arg prints .y = 0 instead of 8.
+36606	list	2	build-system	-	build system: crash when connecting to web UI before configuration completes	Web UI connection before configuration completes crashes the runner; web UI only, maintainer calls it non-blocking.
+36588	file	1	linker	cb36588-elf-linker-eh-frame-comdat-segfault.md	Segfault when building with self-hosted x86_64 backend	ELF linker segfault on C++ COMDAT eh_frame in default x86_64-linux Debug; reproduced on 0.17.1.
+36586	list	3	lib/std	-	Autodoc: comments on parameters lead to bad output	Autodoc rendering glitch
+36584	file	1	upstream-llvm	cb36584-clang-neon-softfp-split-crash.md	zig cc: upstream bug in Clang when compiling arm neon intrinsics	Clang backend crash on NEON x4 loads with softfp, which Android arm uses; reproduced on 0.17.1.
+36580	list	2	lib/std	-	std.http.Client.fetch: fails with `error.CertificateIssuerMismatch` for valid domain	TLS rejects some valid chains with CertificateIssuerMismatch.
+36576	list	2	lib/std	-	`Io.Reader.writableVector` functions do an ill-advised makeshift rebase	Reader.writableVector resets seek/end and drops data that stateful readers keep buffered.
+36574	list	2	compiler	-	byte-aligned pointer to `packed struct` field is no longer a normal pointer	Language behavior change since 0.15; upstream has not decided between documenting it and restoring it
+36572	list	2	lib/std	-	Declaring `_start` does not consistently suppress `std.start` startup logic	Declaring _start does not suppress std.start on every target and output mode.
+36561	list	2	codegen	-	llvm-dwarfdump --verify reports DW_TAG errors	Self-hosted backend DWARF validity issue.
+36547	list	3	compiler	-	Render type of inferred error set	Error-message quality only.
+36541	skip	-	-	-	Unexpected side effect due to `NO_COLOR`	Discussion about NO_COLOR semantics for progress output
+36533	file	1	lib/std	cb36533-macos-debug-alloc-stacktrace-leak.md	Severe Memory Leak on MacOS	Reproduced on 0.17.1: Debug SafeAllocator leaks ~330 bytes per alloc/free on macOS via Mach-O stack-trace arena.
+36522	file	1	codegen	cb36522-llvm-cvaarg-aggregate-segfault.md	wasm: "process terminated with signal SEGV" when using Variadic functions with complex C types	Reproduced on 0.17.1: @cVaArg of a struct segfaults the compiler on wasm32 (and x86_64 in one form)
+36519	skip	-	lib/std	-	std: deprecate ensureTotalCapacity variants for all containers in favor of ensureUnusedCapacity	Proposal to deprecate ensureTotalCapacity.
+36517	list	3	compiler	-	Sema: continues displaying progress node while waiting for codegen queue	Cosmetic progress display.
+36511	list	2	codegen	-	well-defined `packed union` value returns invalid value when accessing integer field	Self-hosted x86_64 backend miscompile; LLVM fine per comments.
+36504	list	2	lib/std	-	zstd.Decompress incorrectly handles/ignores limit	zstd.Decompress ignores the stream limit in direct (unbuffered) mode; package fetch uses buffered mode.
+36489	list	2	lib/std	-	`childWaitPosix` in `Io.Threaded` runs cleanup regardless of error	Canceling Child.wait clears the pid, so the child cannot be killed and is leaked.
+36486	list	3	compiler	-	`-femit-asm=` will not output the asm file if input file is IR or with self-hosted backend	-femit-asm silently ignored for .ll input and self-hosted backends; already filed by another agent as cb31415-emit-asm-silently-skipped.md
+36479	list	2	lib/std	-	std.Io.Batch write order is undefined for writes to the same handle	Batch writes to the same fd complete out of submission order on macOS.
+36474	list	3	upstream-llvm	-	[regression] compiler-rt does not compile anymore when targeting the MIPS III ISA	MIPS III, experimental in LLVM; exotic.
+36468	list	2	lib/std	-	std.int.big not normalizing zeroes	big.int divTrunc can produce a negative-zero remainder; compiler works around it.
+36464	list	2	lib/std	-	Windows: error.Unexpected on stdin ctrl+C	Windows stdin read prints error.Unexpected ALERTED on Ctrl+C; cosmetic.
+36458	file	1	lib/std	cb31945-freebsd-io-threaded-data-loss-and-hang.md	`std.Io.Threaded.join()` sometimes hangs on FreeBSD	Intermittent hang in Io.Threaded join on FreeBSD; filed with codeberg#31945.
+36436	list	3	lib/std	-	`std` docs show `std.math.ldexp` twice and no `std.math.scalbn`	Autodoc alias rendering bug
+36420	list	3	compiler	-	f32 negative zero is treated as just zero.	@min/@max signed-zero results differ between comptime and runtime; IEEE semantics under discussion
+36412	file	1	zig-cc	cb36412-mingw-lto-catch-all-missed.md	Exception falling through catch(...) block when full LTO is enabled (C++/x86_64-windows-gnu)	MinGW C++ exceptions skip catch(...) with full LTO; not reproducible on macOS.
+36405	list	2	compiler	-	Comptime-known negative division is allowed and truncates	Accepts code the langref forbids; results are well-defined.
+36375	list	2	codegen	-	regression in ReleaseFast performance since `0.15.2`, most likely due to vector operations	~10% runtime regression vs 0.15.2, cause unknown; possibly the loop-vectorization workaround.
+36373	skip	-	-	-	CLI renames	Breaking-change proposal
+36372	list	3	compiler	-	Tests in parameterized structs can lead to infinite, uncaught cycles/loops in compiler	Infinite instantiation on self-referential generic tests; contrived.
+36359	list	3	codegen	-	Invalid overflow check for composite integers in SPIR-V	SPIR-V backend; exotic.
+36342	list	2	linker	-	Bad executables with sections larger than 4GB on Windows	COFF linker should reject sections over 4 GiB; rare edge case
+36335	file	1	codegen	cb31022-llvm-asm-memory-constraint-operand.md	Possible mis-compilation between native backend and LLVM for `ldmxcsr` in inline asm	Same "m" constraint lowering bug as cb31022; covered by that file.
+36334	list	2	compiler	-	zig debuginfo varies from ASLR	Reproducible-builds nondeterminism in debug info; no stated need.
+36333	file	1	codegen	cb36333-float-mod-negative-divisor.md	@mod and @rem do not accept negative divisors (comptime/runtime/llvm float discrepancies)	Reproduced on 0.17.1: float @mod(10,-3) gives 1 at runtime and comptime, langref identity requires -2.
+36329	skip	-	lib/std	-	atEnd() reports `false` on reader for newly-created file	atEnd returning false before the size is known is the documented semantics.
+36327	list	2	build-system	-	bundle_compiler_rt option not honored for dynamic libs	bundle_compiler_rt ignored for shared libs; maintainers asked for a full repro
+36316	list	3	compiler	-	large amount of dependency loop segfaults zig	Stack overflow on a 5000+ decl dependency loop; contrived.
+36314	skip	-	lib/std	-	`std.Io.futexWaitTimeout` fails to compile for types that don't allow `@bitCast`	API misuse: pass the atomic raw field; not a defect.
+36309	list	2	build-system	-	installing a Step.Compile anywhere during configure prevents -fno-emit-bin even if that Step.InstallArtifact is never executed	Any installArtifact prevents -fno-emit-bin for check steps; efficiency issue, same root as 36791.
+36296	list	2	lib/std	-	Crash on http.Client.fetch when the nested reader errors	http.Reader does not set body_err when the nested reader fails, so fetch panics on bodyErr().?.
+36291	skip	-	-	-	Tracking Issue: Legacy issues that can be closed	Upstream tracker housekeeping
+36288	skip	-	lib/std	-	std.crypto.Certificate.Bundle: Does not respect SSL_CERT_{DIR,FILE}	Feature request to honour SSL_CERT_FILE/SSL_CERT_DIR.
+36283	list	2	compiler	-	Zero-sized union assumes first field	Spurious compile error for zero-bit bare unions in unsafe optimize modes; regression since 0.16
+36278	file	1	lib/std	cb36278-resolv-conf-no-trailing-newline.md	`std.Io.net.HostName` fails to parse `resolv.conf` with no newline character	Reproduced on 0.17.1; resolv.conf without trailing newline breaks all DNS including zig fetch on Linux.
+36269	list	2	lib/std	-	`std.heap.SafeAllocator` and `std.heap.SmpAllocator` spin without bound on locks	SmpAllocator/SafeAllocator spin without bound on slot locks; performance issue, also hits zig libc malloc.
+36262	list	2	lib/std	-	Io.Reader.readVec can lose track of previously buffered data	readVec loses already-copied buffered bytes when the vtable read fails; design question.
+36256	file	1	codegen	cb36256-array-vector-bitcast-scalarized.md	vector @bitCast between different lane counts scalarizes through an integer round-trip on little-endian targets (0.17-dev regression)	Reproduced on 0.17.1: XxHash3 ~30x slower than 0.16.0; [64]u8 to @Vector(8,u64) bitcast 323 vs 12 instructions.
+36251	skip	-	-	-	Tracking Issue: LLVM 24	Upstream tracking issue
+36224	skip	-	-	-	Emit WebAssembly custom sections	Feature request (PR under review)
+36219	list	2	lib/std	-	DWARF parsing could continue when encountering unsupported unit types	Dwarf.open rejects DW_UT_partial units instead of skipping them; stack trace quality.
+36218	list	2	lib/std	-	std.Io device_io_control returns ENOTTY on a valid tty in ReleaseSafe (aarch64-macos)	Not reproduced on 0.17.1 aarch64-macos (sized pty via script, Debug and ReleaseSafe both correct).
+36210	file	1	codegen	cb36210-export-section-on-function-hits-wrong-global.md	Section applied to random variable in code	Read at 0.17.1: addGlobalExport reads kind.variable on a function global, setting the section on an unrelated variable.
+36209	list	2	compiler	-	zig fmt overwriting symlinks	zig fmt replaces symlinks with files; minor.
+36207	list	2	compiler	-	Compiler crash in debug mode	Crash reproduced only with self-hosted x86_64 backend on contrived @Struct with comptime fn field.
+36186	file	1	lib/std	cb36186-resolv-conf-ipv6-zone-index.md	`Ip6Address.resolve` incorrectly fails to resolve "fe80::1%3"	Reproduced on 0.17.1; numeric IPv6 zone in resolv.conf breaks all DNS including zig fetch on Linux.
+36181	skip	-	build-system	-	confusion around `.preferred_optimize_mode`, `-Drelease`, `--release`	Confusion about optimize-mode flags; documentation/API design.
+36174	list	2	codegen	-	inline asm: compiler crashes when binding a function to a register instead of a function pointer	Reproduced on 0.17.1 (LLVM crash on ill-typed asm input); related to cb32038-asm-input-type-unchecked-crash.md
+36168	skip	-	-	-	CLI Flags Overhaul	Proposal
+36156	list	2	lib/std	-	std.crypto ECDSA P-256 DER parser accepts non-minimal INTEGER encodings	ECDSA DER parser accepts non-minimal INTEGER encodings (signature malleability).
+36145	skip	-	-	-	inconsistency when coercing (pointers of tuples) to all kinds of pointers	Language design question about tuple coercion rules
+36141	list	2	codegen	-	Compiler SEGV when input to inline asm is undefined	On 0.17.1 only the self-hosted x86_64 backend fails (MIR InvalidInstruction); LLVM compiles it
+36137	list	3	build-system	-	`zig build` doesn't listen to `spawn`'s `progress_node`	Progress reporting cosmetics
+36131	skip	-	zig-cc	-	zig objcopy fails to extract sections from PE objects files	Feature request for PE support in zig objcopy.
+36129	skip	-	-	-	`std.crypto.tls` is too large and takes too much time to compile	Performance and size improvement request
+36117	file	1	linker	cb36117-macho-unresolved-dependent-dylib-crash.md	Compiler segfaults when targeting macOS while linking some Frameworks	Unresolved re-exported dylib makes parseDependentDylibs zip unequal lists and crash; code read at 0.17.1.
+36115	list	3	compiler	-	Inconsistent type inference to comptime	orelse on a comptime-known null yields comptime_int; arguably intended
+36104	skip	-	-	-	Implement/add tests for wasm extern functions under same name	Feature and test request
+36103	file	1	lib/std	cb36103-darwin-cwd-stat-ebadf.md	`std.Io.Dir.cwd().stat(io)` errors on macos	Reproduced on 0.17.1: Dir.cwd().stat() panics with EBADF on macOS.
+36098	list	2	lib/std	-	TlsUnexpectedMessage on TLSv1.3	TLS client fails when the server sends a CertificateRequest.
+36093	file	1	bundled-libc	cb36093-compiler-rt-divtf3-underflow.md	compiler_rt: min(f128) / max(f128) causes integer overflow	__divtf3 gives wrong nonzero results on deep underflow; reproduced on 0.17.1.
+36091	list	3	linker	-	missing source location information for undefined symbol errors from elf2 linker	Elf2 / -fincremental diagnostics only.
+36088	file	1	linker	cb36088-rdynamic-dead-strip-macos-windows.md	`-rdynamic` on macOS does not preserve exported executable symbols when dead strip is enabled	rdynamic symbols dead-stripped on macOS release builds; reproduced on 0.17.1.
+36085	file	1	compiler	cb36085-defer-dropped-always-tail.md	`defer` discarded in functions that return `@call(.always_tail, ...)`	Wrong code reproduced on 0.17.1: defer silently dropped with LLVM musttail.
+36077	list	3	codegen	-	0.16.0 miscompilation: bitcast array of bools	Fixed before 0.17; test passes on 0.17.1 in Debug and ReleaseFast.
+36071	list	2	codegen	-	Compiler generates an invalid DWARF line program for `builtin.zig`	Self-hosted backend DWARF line program issue.
+36064	skip	-	-	-	Inconsistencies in ways of reffering to commands, directories, files and code in comments	Documentation style
+36059	list	3	build-system	-	Memory leak when `zig build --watch` ran on Linux system with `CONFIG_FHANDLE=n`	--watch leaks and errors on kernels built with CONFIG_FHANDLE=n; exotic kernel config.
+36048	list	3	build-system	-	Compiler build error when `reftable` ref backend (git) used	Zig own build.zig depends on .git/logs/HEAD, missing with reftable git; rare setup for building the compiler.
+36045	list	3	build-system	-	fuzzer: webui can't load source	Fuzzer web UI cannot load source; fuzzing is experimental.
+36034	list	2	codegen	-	aarch64 std.crypto.core.aes implementation mis-compiles in high-half freestanding build (correct S-box tables, wrong round output)	Possible LLVM aarch64 miscompile only in high-half freestanding kernels; out of scope, undiagnosed.
+36033	list	3	compiler	-	Segmentation fault when assigning a pointer to `comptime var` to a global mutable.	Not reproduced on 0.17.1; proper compile error given.
+36017	list	2	lib/std	-	Stdlib doesn't allow creating abstract sockets.	UnixAddress appends a NUL and length to abstract socket names
+36013	list	3	lib/std	-	Standalone test `config_header` flaky failure on freebsd	Flaky truncated file output on FreeBSD CI; cause unknown; dup of codeberg#31945
+36003	file	1	build-system	cb36003-fetch-save-overwrite-keeps-path-field.md	`zig fetch --save` incorrectly saves external dependency when overwriting local dependency	Reproduced on 0.17.1: zig fetch --save over a path dep writes the URL into .path and no .hash.
+36002	list	3	codegen	-	Composite integers bloat SPIR-V	SPIR-V backend output size; exotic.
+35992	list	3	compiler	-	Unclear error message when using `if` with error union	Error-message quality only.
+35982	list	2	codegen	-	comparing bitpacks with >128bits with avx enabled crashes x86_64 backend	Self-hosted x86_64 backend crash.
+35976	list	2	build-system	-	linkSystemLibrary paths_first strategy should consult pkg-config for library search paths when explicit paths are empty	linkSystemLibrary does not use pkg-config libdir for search; mostly Nix/odd prefixes, borders on enhancement.
+35971	list	2	lib/std	-	Wrong rounding in std.Io.Timestamp.toSeconds()	Timestamp.toSeconds truncates toward zero for pre-epoch times.
+35965	list	2	codegen	-	Struct with .externref field causes LLVM error when targetting`Debug	wasm externref in Debug; niche wasm feature not in the matrix's Emscripten use.
+35958	list	2	build-system	-	stdout output should be cleaned after successful tests	Reproduced on 0.17.1: zig build test shows a passing test's stderr under the next failing test; cosmetic misattribution
+35946	skip	-	build-system	-	Build system pkg-config library name transformations are not reported on failure	Error-message request: report pkg-config name transformation on failure.
+35937	list	2	codegen	-	Compiler segfault when using x86_interrupt calling convention	Crash only with exported x86_interrupt functions taking a pointer (osdev); out of scope.
+35934	skip	-	lib/std	-	`std.lang.CallingConvention` needs some cleanup	CallingConvention cleanup proposal.
+35929	list	2	lib/std	-	Fields of tagged union returned by function missing in html documentation	Autodoc rendering gap; autodoc is out of scope
+35925	list	3	linker	-	`zig build --watch...` crashes sometimes: `unreachable` in MachO `Object.zig:getNStrx`	Only with -fincremental.
+35921	list	2	lib/std	-	Incorrect assertion in RSA-PSS signature verification	RSA-PSS verification asserts for moduli of 1 mod 8 bits; crash only with rare server keys.
+35919	list	2	lib/std	-	Trailing 0 in abstract unix socket name in Io.Threaded	Abstract unix socket address length includes a trailing NUL.
+35911	file	1	codegen	cb35911-llvm-prefixed-symbol-names.md	using "llvm.zig" as a source file path causes LLVM errors	Reproduced on 0.17.1: any file or module named llvm (even non-root) aborts LLVM with reserved llvm. symbol names.
+35907	list	3	compiler	-	`@fieldParentPtr` error suggests `@constCast` for mutable parent of const field pointer	Error-message quality only.
+35901	list	2	codegen	-	Optional pointers in the `.externref` address space do not know how to handle null values.	wasm externref null handling; niche wasm feature.
+35896	list	3	codegen	-	LLVM error with @Vector and @bitCast	Reproduced on 0.16.0; compiles and passes on 0.17.0 and 0.17.1.
+35880	list	2	compiler	-	[0..0], [0..1], [1..1] slicing on *OpaqueType or *const OpaqueType values is allowed now	Accepts *[1]anyopaque; indexing it crashes; unusual code.
+35877	file	1	lib/std	cb35877-tls-ca-basic-constraints-unchecked.md	TLS client doesn't validate cA bit in basic constraints extension	TLS chain validation never checks cA, enabling MITM of std.http and zig fetch; confirmed in 0.17.1 source.
+35869	list	3	lib/std	-	std.math.ldexp is off by 1 for pseudo-subnormal inputs	ldexp off by one for f80 pseudo-subnormal inputs; exotic.
+35843	dup	1	lib/std	darwin-fcopyfile-error-loop	`streamRemaining` on an `Io.File.Reader` fails when piping on Darwin	fcopyfile to a stdout pipe fails (EBADF/EINVAL); reproduced on 0.17.1: panic in Debug, infinite loop in ReleaseSafe - a concrete trigger for that entry.
+35842	list	2	build-system	-	`Build.Step.Options` generates invalid code for arrays of container types	Options step emits invalid Zig for arrays of structs; niche option types, unfixed on master.
+35831	list	2	lib/std	-	LLDB pretty_printers.py not working correctly since update to 0.16.0	Debugger pretty-printer script for std containers broke; tooling out of scope
+35826	list	2	compiler	-	`@FieldType` Semantics	@FieldType accidentally accepts optional and error-union types (maintainer calls it a bugfix); accepts-invalid only, the rest is proposal
+35814	list	3	build-system	-	`ZIG_LIB_DIR` env var not used by `zig init` and `zig targets`	Already fixed: on 0.17.1 both zig init and zig targets honor ZIG_LIB_DIR (checked)
+35812	list	2	compiler	-	invalid coercion from `*T` to `*[1:s]T` compiles	Accepts unsound sentinel coercion; coercion slated for removal.
+35808	list	2	lib/std	-	pollfd definition is missing on Windows	std.c.pollfd references a removed ws2_32 decl on Windows; compile error only when referenced.
+35800	skip	-	-	-	no member function named 'replaceRangeAssumeCapacity' in 'Io.Writer.Allocating'	API request for a missing method; workaround via toArrayList exists
+35797	list	3	build-system	-	`zig build -fincremental` fails to re-run compiler when module root file path changes	-fincremental keeps stale module graph when a module root path changes; incremental compilation.
+35786	skip	-	-	-	Arithmetic with `comptime_int` and runtime int throws "type cannot represent integer value" even when result is representable	Peer type resolution semantics question / documentation request, not a defect
+35775	skip	-	-	-	Including support for runpath when compiling for Guix	Feature request for Guix packaging support
+35772	list	3	compiler	-	Incorrect source location when type is not a type in variable declaration	Error-message location only.
+35768	list	3	compiler	-	Using reserved words as enum keys	Parser error-message quality only.
+35757	list	3	lib/std	-	std.compress.flate.Compress.init cannot be used with empty Writer.Allocating	flate.Compress.init asserts on an empty Writer.Allocating; documented precondition, assert is off by one.
+35756	list	2	build-system	-	footgun: zig fetch does not recognize `?ref=REF` part of URL	zig fetch ignores ?ref= in URLs it itself writes; desired behaviour not decided upstream.
+35746	list	3	upstream-llvm	-	lld emits an invalid `.hash` section on s390x	s390x only, upstream lld.
+35740	list	3	linker	-	If OOM is iterated for the Nth time, all the first N-1. msg strings will leak	Real leak of note strings on OOM in link.zig addMissingLibraryErrorLockedFallible (present at 0.17.1); OOM-only
+35739	list	3	compiler	-	`Sema.fail` missing `errdefer` after `errMsg` allocation	Sema.fail (Sema.zig:2678) leaks the error message if adding a note OOMs; OOM-only leak
+35737	list	2	lib/std	-	Generated web documentation width is broken due to long URLs/links on phone view	Autodoc CSS layout bug on narrow screens
+35735	skip	-	lib/std	-	update std.lang enums to conform to snake case convention	Breaking rename proposal for std enums.
+35724	file	1	codegen	cb35724-asm-inout-clobber-register.md	inline asm: same register as input, output, and clobber miscompiles	Reproduced on 0.17.1 aarch64 ReleaseSafe/Fast; std.Io fiber contextSwitch uses this pattern on aarch64, riscv64, x86_64.
+35721	list	2	build-system	-	build system only uses part of stderr of a test in the error message	Test failure stderr is sometimes truncated in build output (race); cosmetic.
+35719	list	2	lib/std	-	integer does not fit in destination type	HashMap Size is u32; ensureTotalCapacity beyond ~3.4e9 panics on @intCast instead of returning an error
+35716	skip	-	lib/std	-	std.mem.lcm function.  Integer overflow	lcm(u8 120, u8 84) = 840 does not fit u8; overflow is expected, proposal for a wide variant.
+35708	list	2	compiler	-	Unwrapping comptime null optional values is not always performed at compile time	Inconsistent comptime/runtime unwrap semantics; no crash.
+35693	list	2	lib/std	-	std.zon: can't parse some large numbers due to `@intFromFloat`	ZON parsing of large .0 floats into u128 is lossy or panics in @intFromFloat.
+35689	list	2	build-system	-	crafted ref-delta pack can cause quadratic index time	Crafted git ref-delta pack makes indexPack quadratic; DoS on malicious input only.
+35686	list	3	lib/std	-	`fs.test.test.deleteDir` flaky failure on Windows	Flaky Windows CI test (deleteDir DirNotEmpty); root cause unclear.
+35683	list	2	lib/std	-	std.Random.array broken when array type is not u8	Random.array fails to compile for element types other than u8.
+35656	list	2	lib/std	-	Carets `^` in stack traces are printed incorrectly when the source file contains tabs	Stack trace caret misplaced on lines containing tabs; cosmetic regression from 0.15.
+35655	file	1	lib/std	cb36842-windows-https-fetch-io-timeout.md	std: std.http.Client: netReadWindows | HTTPS connections fail on Windows	HTTPS via std.http fails on Windows with IO_TIMEOUT during TLS init; same failure as codeberg#36842.
+35652	file	1	build-system	cb35652-lazy-deps-extracted-from-global-cache.md	Unnecessary lazy dependencies are copied from the global cache to ./zig-pkg	Fetch.zig checks the global cache before laziness, extracting unrequested lazy deps into zig-pkg; read at 0.17.1.
+35648	list	2	lib/std	-	Doc comments get mixed up	Autodoc merges alias doc comment into container doc comment
+35646	skip	-	lib/std	-	`process.currentPath` docs disagree with `Io.Threaded` implementation	WASI currentPath docs vs behavior; documentation/API design.
+35642	list	3	compiler	-	Parser does not produce a helpful message for invalid infix operator	Parser error-message quality only.
+35634	file	1	codegen	cb35634-llvm-packed-return-reads-writeonly-sret.md	Miscompilation when returning packed struct with -OReleaseSafe	LLVM IR on 0.17.1 reads uninitialized writeonly sret memory; miscompilation.
+35605	list	3	build-system	-	Building from scratch fails on openzfs: unable to load 'config.zig': FileNotFound	zig1.wasm/wasi.c bootstrap fails to open config.zig on ZFS only; exotic host filesystem
+35603	file	1	lib/std	cb35603-windows-overlapped-stdio-pending-unreachable.md	std.Io Windows file writes reach `unreachable` on STATUS_PENDING when a standard handle is an overlapped pipe	Windows writes hit unreachable on STATUS_PENDING with overlapped stdio pipes; crashes zig build runner.
+35597	list	2	codegen	-	Inconsistent signed integer representation - llvm vs no-llvm	Wrong result only with the self-hosted backend; LLVM correct.
+35591	list	3	compiler	-	`@splat` produces inconsistent error messages for nested optionals/error unions	Error-message quality only.
+35554	list	3	codegen	-	LLVM backend: "Assigned value does not match type of forward declaration" on unaligned store of a width-enlarging @shuffle result in optimized builds	Reproduced on 0.16.0; compiles on 0.17.0 and 0.17.1.
+35549	list	2	lib/std	-	std.tar.extract fails on macOS due to case-sensitivity	Tarball with case-colliding names fails to unpack on macOS; upstream considers the error correct and suggests paths filtering.
+35537	list	2	linker	-	x86_64-windows failing behavior tests with self-hosted x86 + self-hosted linker	Self-hosted x86_64 + COFF linker, not default for Windows.
+35534	list	2	lib/std	-	std.Io.Threaded.dirOpenFilePosix unaware of EREMOTEIO error code	EREMOTEIO from NFS falls into unexpectedErrno in open; minor errno-mapping gap, no stated use.
+35521	list	2	codegen	-	C ABI tests failing on x86-windows	32-bit x86-windows C ABI; the matrix has x64 and arm64 Windows only.
+35520	list	3	lib/std	-	std lib unit test failing on x86-windows: `math.decltest.wrap`	math.wrap test fails on x86-windows (32-bit); target outside matrix.
+35518	list	3	codegen	-	behavior test failure on x86-windows: `behavior.floatop.test.@log2 with vectors`	32-bit x86-windows (pentium4) @log2 vector result mismatch; target outside the matrix
+35512	file	1	lib/std	cb35512-libc-unsetenv-environ-null-panic.md	libc `std.start.main` assumes `envp` is immutable, which leads to panic(s)	Reproduced on 0.17.1: libc unsetenv shrinks envp in place and std.debug.print panics on the null entry.
+35504	list	2	build-system	-	`zig build uninstall` panics with link to old Github issue	Uninstall step is unimplemented and panics with TODO (github#14943)
+35491	list	2	lib/std	-	BrkAllocator cannot allocate more than `2GiB - @sizeOf(usize)` when targeting wasm32	BrkAllocator cannot allocate >2GiB on wasm32; opt-in allocator, narrow edge.
+35486	list	2	compiler	-	`@bitCast` into packed struct doesn't validate enum fields	Comptime @bitCast into packed struct accepts invalid enum bit patterns; missing safety check (github#21372)
+35457	list	3	build-system	-	Maker.WebServer: fix bad logic in serveTarFile	WebServer serveTarFile path logic TODO; affects fuzzer/web UI only.
+35452	list	2	compiler	-	zig std subcommand crashes/tries to open an empty file	zig std run from inside the lib dir passes an empty lib path and fails (null unwrap in debug compiler)
+35449	list	2	build-system	-	Test --listen with stderr print fails due to unhandled EOF	On 0.17.1 a test that writes stderr passes (exit 0) but the runner prints 'failed command:' beside the output; reported EOF failure not reproduced
+35448	file	1	compiler	cb35448-inline-else-bitpack-enum-switch-crash.md	Compiler segfault when switching on `enum` with less values then backing type inside `inline else` prong of `packed struct` switch	Compiler segfault reproduced on 0.17.1 with default and LLVM backends.
+35444	dup	1	build-system	cb36003-fetch-save-overwrite-keeps-path-field.md	Zig fetch doesn't replace path field for URLs	Same defect as codeberg#36003 (fetch --save keeps .path field); covered by that backlog file.
+35442	list	3	target-defs	-	Incorrect size for c_long for `x86-macos` target	c_long size wrong for x86-macos (32-bit macOS); dead target.
+35435	skip	-	-	-	Legacy issue regarding comptime `std.fmt.bufPrint` (#5401)	Legacy-issue bookkeeping; behavior already correct and tested
+35425	list	2	lib/std	-	`std.StaticStringMap(T).deinit` panics with `"Invalid free"`	Only an empty runtime-initialized map: deinit frees the static default kvs; narrow edge case.
+35424	list	3	lib/std	-	Using `std.testing.io.async` causes segfault in a fuzz test	Fuzzing only: testing.io allocator is null inside fuzz runs
+35388	list	2	compiler	-	slice with defined ptr and undef len crashes Sema in several places	Crashes need comptime slice.len = undefined; contrived.
+35377	skip	-	-	-	Behavior tests should avoid `expectEqual` and friends	Upstream test-suite hygiene task
+35372	list	2	lib/std	-	std.json types jsonParse does not set deafults for options struct	json ArrayHashMap.jsonParse unwraps null ParseOptions fields; std.json is out of scope.
+35365	list	3	build-system	-	`-fincremental` silently fails inside `/tmp`	Only with -fincremental.
+35359	list	3	lib/std	-	`fs.test.test.Dir.renamePreserve onto existing` flaky on Windows	Flaky Windows rename test (AccessDenied from other processes holding handles).
+35351	file	1	compiler	cb35351-inline-for-unlabeled-break-crash.md	Compiler segfault with labeled break and unlabeled break inside `inline for`	Compiler segfault reproduced on 0.17.1 on ordinary loop code.
+35346	skip	-	-	-	Unexpected asBytes behavior for nonstandard unsigned ints	asBytes returning @sizeOf bytes for u24 is intended; documentation request
+35340	list	2	lib/std	-	`renamePreserve` fails to rename directories on non-Linux/non-Windows/non-Darwin platforms	Hard-link fallback cannot rename directories (FreeBSD etc.); only direct renamePreserve calls on directories, File.Atomic uses it for files.
+35329	list	3	codegen	-	x86-64: Linux's result in debug mode differs from ReleaseXXX optimizations	x86_64 C ABI struct-by-value bug; reporter confirms fixed in 0.17.0-dev.1640, which 0.17.1 includes
+35323	skip	-	-	-	@FieldType() differs semantically from @TypeOf(@field())	Language design discussion about builtin naming and scope
+35316	list	2	codegen	-	[Regression] `LLVM Emit Object` is much slower on 0.16.0 in ReleaseSafe	Compile-time regression without a diagnosed cause.
+35315	list	2	lib/std	-	`std.math.acosh` of large negative numbers does not return `nan`	acosh64 cancellation returns finite values for some x < -1e4; std.math precision defect.
+35310	list	2	lib/std	-	zon.parse: Parsing a document use the default branch quota	std.zon.parse canParseType exceeds the default comptime quota on moderately large schemas; caller can raise quota.
+35309	list	3	compiler	-	Unclear error location for overlarge struct	Error-message location only.
+35308	list	2	build-system	-	Improve diagnostics for CacheCheckFailed caused by incomplete build.zig.zon paths	Diagnostic gap for translate-c in fetched packages; error message only.
+35298	list	2	compiler	-	Packed Struct Byte Aligned Field Pointer Access Should Produce Compile Error	Missing compile error for byte pointers into packed structs; code is unsupported.
+35296	list	2	lib/std	-	std.Io.net.HostName.validate fails for IPv6	HostName.validate rejects IPv6 literals; networking API gap with a workaround.
+35295	list	2	codegen	-	running dwarfdump yields errors	Self-hosted backend .debug_loclists/line table validity.
+35294	file	1	lib/std	cb35294-https-proxy-connect-no-tls.md	connectProxied does not upgrade connection to TLS after CONNECT tunnel	connectProxied returns the plain tunnel without TLS, so zig fetch over HTTPS fails behind https_proxy; code unchanged at 0.17.1.
+35291	file	1	build-system	cb35291-macos-case-insensitive-build-zig.md	zig tries to build with the wrong `[Bb]uild.zig` file on macOS	Reproduced on 0.17.1: zig build in a subdir with Build.zig uses it as build.zig on case-insensitive APFS.
+35284	list	2	lib/std	-	std.Io.Threaded panics with socket receive timeouts	SO_RCVTIMEO EAGAIN treated as errnoBug in netReadPosix; networking, no stated use.
+35278	list	2	lib/std	-	`std.http.Client` hangs with `localhost` when `io.async` falls back inline under `async_limit` saturation	Hang only with IPv6 disabled and a saturated async pool; std.http niche.
+35267	list	2	linker	-	`x86_64-macos` module tests fail to run due to `segment '__CONST_ZIG' vm address out of order`	Self-hosted x86_64-macos path, which is not the default backend for macOS.
+35257	dup	1	build-system	cb36003-fetch-save-overwrite-keeps-path-field.md	zig fetch --save=<name> does not replace missing .hash fields	Same code path as codeberg#36003 (missing .hash not re-added on overwrite); covered by that backlog file.
+35254	list	2	codegen	-	Compiler hangs forever when trying to @select an array in any release mode	Hang only with 65536-lane vectors; quadratic typeOfWip in Builder.
+35250	list	2	lib/std	-	Io.Select can crash when calling async concurrently with cancelDiscard	Data race between Select.cancelDiscard and concurrent Select.async in Io.Threaded group cancel.
+35246	list	2	lib/std	-	Ed25519. KeyPair.generate potentially uses weak randomness	Ed25519 key generation uses io.random rather than io.randomSecure; crypto, outside stated use.
+35239	file	1	linker	cb35239-elf-linker-ignores-libc-file-crt-dir.md	self-hosted linker does not add crt_dir from the libc_file to the library search path	x86_64-android Debug uses the self-hosted ELF linker, which ignores the libc file crt_dir.
+35221	list	3	compiler	-	"expected type" missing defined-here note on field assignment	Error-message quality only.
+35204	list	3	build-system	-	build system fmt step with check=false does not acquire a write lock on source files	Fmt step in-place write without a lock is a surfaced TODO; theoretical race.
+35193	list	3	codegen	-	SPIR-V backend: structured CFG lowering produces unreducible loops in SPIRV-Cross	SPIR-V backend; exotic.
+35186	list	3	compiler	-	Compiler crash coercing &.{} to slice of cross-module packed type	Not reproduced on 0.17.1 (three runs passed).
+35185	list	2	lib/std	-	unexpeced errno `5` in `Io.Threaded.dirOpenDirPosix`	EIO not mapped in dirOpenDirPosix (disconnected device); minor errno-mapping gap.
+35184	list	2	lib/std	-	SpawnOptions.start_suspended does not work as intended	start_suspended sends SIGSTOP to the whole process group and blocks spawn; rarely used option.
+35176	list	2	codegen	-	`-femit-asm` silently produces no output with x86 backend	Self-hosted x86_64 backend; related backlog file cb31415-emit-asm-silently-skipped.
+32183	list	2	codegen	-	Segfault when storing @typinfo struct fields to a constant	Self-hosted backend crash only; repro no longer valid against 0.17.1 std.
+32181	file	1	lib/std	cb32181-linux-cap-user-header-pid-type.md	Incorrect pointers or something weird depending on optimization mode	cap_user_header_t.pid is usize (linux.zig:7267) instead of int, so capget reads padding as pid on 64-bit Linux
+32173	skip	-	build-system	-	add a different kind of command line flag for build options that are file paths	Proposal for a separate CLI flag for file-path build options.
+32165	file	1	compiler	cb32165-tuple-ref-literal-wrong-field-offsets.md	Tuple literals allow for unsafe pointer casting	Reproduced on 0.17.1: &.{...} to pointer-to-tuple stores fields via ptr_elem_ptr (Sema.zig:19417), corrupting them
+32163	dup	-	translate-c	darwin-fcopyfile-error-loop	zig translate-c output can be redirected, but hangs when you try to pipe.	Reproduced on 0.17.1: fcopyfile to a pipe returns EBADF, Threaded.zig:11847 returns 0 without disabling fcopyfile, sendFileAll spins
+32133	list	2	build-system	-	zig 0.16.0  translate-c fails when given -target	With an explicit -Dtarget, translate-c's linkSystemLibrary searches no native paths; cross-mode design plus questionable -l handling in translate-c
+32131	list	3	compiler	-	missing note when return value has the wrong type	Error-message quality only.
+32129	list	2	lib/std	-	std.http.Client hits segmentation fault when running through wine	Windows binaries segfault under Wine in DNS lookup/getSystemDirectory (csrss data absent); Wine-only.
+32121	list	2	build-system	-	Relative path resolution for build-steps with a custom cwd is not symlink-aware	Run.setCwd relative path computation is not symlink-aware; Nix-on-macOS niche.
+32116	file	1	bundled-libc	cb32116-mingw-gnu-source-sscanf-crash-dll.md	Bad stdio.h definition when building -D_GNU_SOURCE with zig into a dll	MinGW DLL with _GNU_SOURCE and a Zig root module crashes in sscanf (__mingw_sscanf); Windows MinGW is in the matrix, not reproduced
+32115	file	1	linker	cb32115-android-tls-segment-underaligned.md	tls segment is underaligned when targeting aarch64-linux-android	Bionic refuses Zig executables with PT_TLS align below 64/32 on arm64/arm.
+32114	list	2	linker	-	EntryPoint for wasm32-freestanding is broken for `exe.entry = .disabled` or `exe.entry = Entry { symbol_name = "_start" }`	Zig wasm linker always emits start=__wasm_init_memory when passive inits exist (Flush.zig:1119); wasm32-freestanding only, Emscripten links via emcc
+32109	list	3	compiler	-	Bad error message when an `if` after `else` is missing	Parser error-message quality only.
+32105	list	2	lib/std	-	initDetect function in std/Io/File/Writer.zig calls not existing .detect method on Mode enum defined in std/Io/File/Reader.zig .	File.Writer.initDetect is stale and fails to compile when referenced (still present at 0.17.1).
+32101	list	3	compiler	-	Unhelpful compilation error of wrapping/saturating addition/subtraction of pointer	Error-message quality only.
+32095	file	1	build-system	cb32095-translate-c-ignores-search-prefix.md	zig build –search-prefix parameter does not affect the zig translate-c command line parameters	TranslateC step never adds --search-prefix include dirs (Compile does); read at 0.17.1.
+32090	list	3	lib/std	-	Build runner doesn't take into account system library path on x86 Linux	NativePaths builds the multiarch dir from Zig arch name (x86-linux-gnu, not i386-linux-gnu); native 32-bit x86 hosts only
+32088	skip	-	lib/std	-	It's not possible to call `setsockopt` without `optval`, or with it but set to zero/null.	API ergonomics request; a commenter showed the kernel behaves the same from C.
+32081	list	3	compiler	-	run clean compilation when link inputs change on incremental update	Incremental compilation only.
+32075	skip	-	-	-	add test coverage for ios executable headers	Upstream test-coverage task
+32074	skip	-	-	-	add test coverage for compiler_rt not pulling in debug info functionality	Upstream test-coverage task
+32073	skip	-	-	-	add test coverage for glibc versions compatibility	Upstream test-coverage task
+32066	skip	-	zig-cc	-	[zig cc] add libcompiler_rt.profile.a gen	Feature request for a bundled profile runtime.
+32064	file	1	zig-cc	cb32064-cxx-shared-lib-missing-crtbegin.md	[zig c++] crtbeginS.o and crtendS.o missing - crash in .so's	Bundled-libc shared libs get no crtbegin/crtend, so C++ dtors crash after dlclose.
+32062	list	2	zig-cc	-	[zig cc] -v output lists /path/libcompiler_rt.a instead of -lcompiler_rt	libtool compatibility of the -v link line; mechanism lives in a linked issue not in this slice.
+32057	list	2	compiler	-	`@setFloatMode` in a comptime block not functioning correctly	Container-level @setFloatMode ignored, contrary to langref.
+32053	list	3	linker	-	-fincremental -fllvm crashes self-hosted linkers	Only with -fincremental.
+32050	list	2	zig-cc	-	Multithreaded C dependencies give a confusing error in single threaded mode	Confusing undefined-symbol errors for libc++ when single_threaded; error message only.
+32040	list	2	build-system	-	Building with `-DZIG_SHARED_LLVM=ON` links multiple libc++ implementations on macOS	Building Zig itself against shared LLVM on macOS mixes libc++ copies; affects distro builds, not static-LLVM builds
+32038	file	1	compiler	cb32038-asm-input-type-unchecked-crash.md	Inline asm codegen crash when input constraint is nonsensical, no frontend type check	LLVM codegen crash reproduced on 0.17.1; asm inputs not type-checked; regression since 0.16.
+32034	file	1	build-system	cb32034-path-deps-not-canonicalized.md	build.zig.zon dependencies relative paths cause conflicts	Reproduced on 0.17.1: same path dep reached via two relative spellings becomes two packages.
+32024	list	3	bundled-libc	-	Risc64I multiplication misscompilation on generic_rv64	riscv64 without the M extension only (not the default rv64gc).
+32011	list	2	lib/std	-	`zig reduce` crashes and sets the file to something uninteresting	zig reduce panics on syntax errors and leaves the file in a non-interesting state; tool out of scope
+32004	list	3	linker	-	Building for OpenBSD should provide __data_start	OpenBSD only.
+31996	list	2	compiler	-	Compiler mistakes a comptime argument in a function pointer for a type	@call with runtime arg to comptime param gives wrong error (assert in debug).
+31995	list	2	build-system	-	fetching memory leaks	Memory leaks in fetching visible only with DebugAllocator builds.
+31987	list	3	compiler	-	False Negative in `ast-check`'s Unreachable Code Errors, in Aggregate Initialisers	Missing dead-code error; harmless.
+31963	list	2	codegen	-	Self-hosted backends panic on creating union with slice?	Self-hosted aarch64/x86_64 backend crash; LLVM fine.
+31962	list	2	codegen	-	Union with large struct fail to set the proper tag.	Union tag miscompile with align(1) extern fields: LLVM fixed in 0.17.1 by 586601727a (0.17.0 fails); self-hosted x86_64 still wrong on 0.17.1
+31958	file	1	bundled-libc	cb31958-mingw-lto-zigc-undefined.md	mingw: undefined symbols referenced by zigc error with LTO enabled	Any MinGW -flto link fails; reproduced on 0.17.1.
+31956	list	2	lib/std	-	std.Io.Threaded on Windows leaves several common NTSTATUS values unmapped in socket paths	Unmapped NTSTATUS values in Windows socket paths; mostly mapped in 0.17.1 except connect; referenced from cb36842.
+31952	list	3	compiler	-	zig build mistakens Struct fn for @EnumLiteral() when there's catch clause	Expected decl-literal limitation; error message only.
+31951	skip	-	build-system	-	Move Windows resource compilation to the build system	Proposal / refactor.
+31946	file	1	lib/std	cb31946-readfilealloc-trusts-stat-size.md	std.Io.Dir.readFileAlloc() - can't read /proc files	readFileAlloc trusts stat size, returns empty data for /proc files; code unchanged at 0.17.1 and master.
+31945	file	1	lib/std	cb31945-freebsd-io-threaded-data-loss-and-hang.md	`std.Io.Threaded` sometimes loses input/output data on FreeBSD	Intermittent truncated reads/writes in Io.Threaded on FreeBSD.
+31942	list	2	lib/std	-	std.Io.Dir.realPath returns error.FileNotFound when used on std.Io.Dir.cwd()	realPath on Dir.cwd() (AT_FDCWD) returns FileNotFound; process.currentPath is the workaround.
+31919	list	2	lib/std	-	zig detects newer glibc version as native than really is on the system	Native glibc version over-detected on RHEL-like distros with backported symbol versions; native-only, low impact.
+31915	list	3	linker	-	segmentation fault when using zig build run with -fincremental	-fincremental only, reported fixed on 0.17.0-dev.
+31907	list	3	zig-cc	-	none ANSI complient behivior of zig cc around header expansion	No reproduction; maintainer doubts a zig cc difference.
+31897	file	1	codegen	cb31897-llvm-strip-mismatch-inline-dbg-var-crash.md	Segfault when using mismatched strip options on modules and using optimizer	Reproduced on 0.17.1: LLVM backend segfaults lowering dbg vars of an unstripped inline fn into a stripped module
+31890	list	3	compiler	-	Inconsistent compile error message when trying to cast a single pointer to a many pointer	Error-message quality only.
+31886	list	3	compiler	-	`@TypeOf` notes when no peer type is found are unhelpful	Error-message quality only.
+31879	list	2	codegen	-	Self-hosted x86_64 backend has issues with the Tracy profiler	Self-hosted x86_64 backend debug info/string uniqueness problems with Tracy; LLVM works
+31870	list	2	lib/std	-	Networking code should expect EPERM	sendmsg EPERM (firewall/VPN) hits unexpectedErrno in DNS lookup; noisy trace but request still succeeds.
+31857	list	2	codegen	-	Compiler bug with the self-hosted x86_64 backend and certain combinations of CPU features	Self-hosted x86_64 with unusual CPU feature sets.
+31848	skip	-	build-system	-	integration test coverage for fetching	Upstream test coverage request for fetching.
+31847	list	2	codegen	-	[LLVM] The debugger is unable to inspect some unused local variables	Debug-info quality only.
+31844	file	1	codegen	cb31844-darwin-compiler-rt-not-weak.md	darwin compiler-rt symbols are not exported as weak	Reproduced on 0.17.1 macOS: compiler-rt not weak, and a user weak export is a local symbol C cannot link.
+31843	list	2	compiler	-	@sizeOf not working for types that are disallowed at runtime (comptime only)	@sizeOf(comptime_int) errors though the langref says 0; std.mem.eql on comptime_int slices fails as a result
+31836	list	2	lib/std	-	Io.Dispatch.deinit	Io.Dispatch (evented) deinit compile error on macOS; experimental Io backend.
+31831	skip	-	lib/std	-	Proposal: Integrate errno parsing into syscall wrappers in `std.os.linux`	Proposal to wrap errno in std.os.linux syscalls.
+31819	list	2	lib/std	-	TlsInitializationFailed when disabling SIMD instructions.	std.http/crypto TLS failure with SSE disabled on Windows; not reproduced by a commenter; area out of scope
+31800	list	3	codegen	-	string formating yields 'reached unreachable code' on avr target	AVR target formatting/bitcode failure; exotic arch.
+31799	list	3	compiler	-	erroneous usage of `@fieldParentPtr` reports non-power-of-two alignments	Error-message quality only (same as 37623).
+31765	list	2	lib/std	-	18kb `Progress.global_progress` present in binary even if `std.Progress` is never used	Binary-size bloat: Io spawn paths reference Progress.setIpcFile; not a functional defect
+31753	list	2	lib/std	-	std.Io.Evented (io_uring): Dir.copyFileAbsolute(..., .replace = false) panics with INVAL on Linux	Io.Evented io_uring linkat EINVAL panic; experimental Io backend.
+31740	list	2	lib/std	-	TLS Client does not notify the server on key update	TLS client does not answer a KeyUpdate request as RFC 8446 requires; rarely triggered.
+31728	list	2	lib/std	-	`std.compress.flate.Decompress` integer overflow	Direct-mode (zero-buffer) Decompress plus readAlloc overflows in rebase; known limitation with a workaround.
+31718	list	2	lib/std	-	Io.Threaded: detecting non-blocking IO with poll is unsound	Batch.awaitConcurrent relies on poll readiness then blocks/deadlocks on pipes; design-level Io.Threaded defect.
+31703	list	3	upstream-llvm	-	LLVM fails to respect `-fno-builtin` in compiler-rt on WASM	Workaround already in 0.17.1 lib/compiler_rt/mulo.zig; only blocks removing it.
+31686	skip	-	lib/std	-	`std.Io.net.Socket.send` cannot send multiple iovec in a single msghdr	API design discussion about vectored UDP send; reporter now pursuing another approach.
+31676	list	3	build-system	-	System libraries linked in dynamic library are not transitive	System libs of a dynamic library are not propagated to consumers; possibly working as intended, vague.
+31661	skip	-	-	-	Tracking Issue: Legacy issues that need tests to be closed	Tracking issue for upstream test bookkeeping
+31652	skip	-	lib/std	-	Proposal: Avoid the term "page size" in std, rename decls in `std.heap`	Naming proposal.
+31638	list	2	lib/std	-	zon parsing reaches branch limit for structs with too many fields	std.zon.parse hits comptime branch quota for ~20-field structs; same family as #35310.
+31633	list	2	codegen	-	Compiler crash with packed struct with 0 sized field	Self-hosted x86_64 backend crash.
+31629	list	3	codegen	-	Multiple issues with llvm & specific struct layout utilizing @Vector and align	Reproduced (crash) on 0.16.0 and 0.17.0; fixed in 0.17.1 by 586601727a, prints 103; extern variant now a compile error.
+31625	file	1	lib/std	cb31625-darwin-sem-open-not-variadic.md	Semaphores definition in std/c.zig	std.c.sem_open non-variadic, wrong ABI on Apple arm64; fixed on master in aa5a7dc93d.
+31618	list	2	compiler	-	compiler segfault when coercing function into a function with an `anytype` return type	Crash reproduced on 0.17.1 but needs coercion to a generic fn type; contrived.
+31617	list	3	compiler	-	Segfault in build-exe	Minimal repro builds on 0.17.1 for x86_64-linux; reportedly fixed by #35711.
+31613	file	1	build-system	cb31613-options-same-content-module-collision.md	`addOptions` cache collision causes "file exists in multiple modules" error	Reproduced on 0.17.1: identical addOptions content in two deps collides as one file in two modules.
+31607	file	1	linker	cb31607-macho-drops-custom-text-section.md	Zig linker drops custom MachO sections from static libraries (__TEXT,__jsc_int), breaking JSC's LLInt interpreter	Release Mach-O links drop a referenced custom __TEXT section, crashing JSC.
+31585	list	2	codegen	-	anytype + asm compiler SIGSEGV	Self-hosted x86_64 backend crash in airAsm.
+31580	list	2	linker	-	ELF linker crashes with large Bss	Self-hosted ELF linker with a huge BSS (disabled test); fix PR open upstream.
+31576	list	3	codegen	-	C backend emits incorrect type layouts for MSVC	C backend output compiled with MSVC (bootstrap); CBE is out of scope.
+31569	list	2	compiler	-	@atomicRmw not providing result location type.	Atomic builtins give no result type to pointer operand; usability gap.
+31564	skip	-	-	-	Standalone test `run_output_caching` flaky failure on Windows	Upstream CI flake
+31562	list	3	lib/std	-	Frequent `internal test runner failure: EndOfStream` on `powerpc64le-linux`	Test runner sees EOF on stdin after io_uring use in std tests; seen on powerpc64le CI
+31561	list	3	lib/std	-	`fs.test.test.'.' and '..' in Dir functions` flaky failure on Windows	Flaky Windows fs test (rename AccessDenied); root cause external handles.
+31556	skip	-	lib/std	-	There's no easy way to access AffineCoordinates type	Request to export a crypto type; API surface, not a defect.
+31555	skip	-	-	-	test harness has no way to test errors that include internpool indices	Upstream test-harness infrastructure
+31542	list	2	lib/std	-	`std.fs` test failures on less common filesystems on linux	std.fs panics on NFS (flock EBADF); renamePreserve EINVAL already handled in 0.17.1.
+31535	list	3	compiler	-	Compiler crash in Zig 0.15.2 when instantiating a top-level generic convenience function forwarding through a threadlocal default object	Compiler crash on 0.15.2 with no self-contained reproduction; too vague to act on
+31531	list	2	codegen	-	llvm backend produces invalid bytecode for inline asm with extern output type	Rare: asm output of struct type; LLVM verifier abort.
+31528	list	2	codegen	-	Comptime known pointer is 0 in indirect call	Self-hosted x86_64 backend miscompile.
+31524	list	3	compiler	-	Compiler segfault with @embedFile + addAnonymousImport + refAllDeclsRecursive + packed struct self-reference	Reported not reproducible since 0.16.0.
+31522	list	3	linker	-	Mach-O linker is not endian-clean	Only matters on big-endian hosts.
+31514	file	1	lib/std	cb31514-android-statx-enosys-old-kernels.md	Unexpected error on Fairphone FP3	std.Io stat uses only statx; fails with Unexpected on Android kernels <4.11 that Zig default API 29 allows.
+31512	list	3	codegen	-	Compiler segfaults trying to compile an indirect function call	Updated repro does not crash on 0.17.1 (self-hosted or LLVM).
+31504	list	3	lib/std	-	Flaky test `crypto.argon2.test.kdf derived key length`	Rare SEGV on powerpc64 under qemu in CI; exotic arch, undiagnosed.
+31499	list	2	lib/std	-	Windows kernel bug causes Unix socket timeouts	Windows AF_UNIX kernel bug causes hangs; upstream plans to declare unsupported.
+31494	skip	-	lib/std	-	DNS resolution not working when done directly but http.Client seems to follow a different path	Reporter misused IpAddress.resolve (parses literals only); not a defect.
+31486	list	3	upstream-llvm	-	llvm backend assertion failure on safe compiler builds, versions which omit the assertion work anyway	LLVM assertion only in assert-enabled compiler builds; no reduced repro.
+31466	list	3	compiler	-	misleading error message on PTR failure for place-expressions	Error-message quality only.
+31454	list	2	lib/std	-	`connectProxied` has no timeout for http connect response	No timeout on proxy CONNECT response; can hang, std.http robustness.
+31446	list	2	build-system	-	misleading error location when missing lazy dependency has been promoted to non-lazy	Fetch errors point at the wrong (lazy) dependency when an eager duplicate promoted it; error reporting only.
+31436	list	3	zig-cc	-	wasi: zig cc crash with `exception_handling` feature enabled	Does not reproduce on 0.17.1.
+31427	dup	-	target-defs	ohos-libc-support	Cross-Compilation HarnonyOS Zig-0.16.0-dev from the bootstrap source requires modifications zig-bootstrap 2 files	Same OHOS available_libcs and pthread type gaps as the known entry (codeberg#31427 is its source)
+31424	skip	-	lib/std	-	A binary compiled with `-target x86-windows.xp` does not run on Windows XP with Zig-provided entry point	Windows XP is unsupported; request for entry-point compatibility.
+31421	list	2	lib/std	-	unused std.Io functions are not optimized out leading to executable bloat	Known size regression from std.Io vtable; still present in 0.17 per comments; not a functional defect
+31416	list	2	compiler	-	compiler handles optional slices incorrectly in multiple places	Optional-slice @ptrCast lacks null check; coercion gap.
+31415	file	1	compiler	cb31415-emit-asm-silently-skipped.md	`zig build-exe -femit-asm` does not emit assembly when compiling C code but terminates successfully	Reproduced on 0.17.1: -femit-asm silently skipped for C exe/lib/obj.
+31412	list	3	build-system	-	Undefined symbols from libfuzzer when fuzzing a module that uses LZ4	Fuzzing only
+31410	list	2	lib/std	-	std.http.Client.ConnectTcpOptions.timeout is ignored	ConnectTcpOptions.timeout never forwarded to HostName.connect; one-line plumbing fix.
+31402	list	2	lib/std	-	Flaky `crypto.argon2.test.kdf` test failure	Intermittent wrong argon2 output on x86_64 CI; undiagnosed, crypto.
+31398	list	3	codegen	-	Debug return-trace register r9 not spilled across Zig-internal calls in shared libraries	Self-hosted x86_64 0.15.2 bug; reporter says it does not reproduce on 0.16.0-dev
+31394	list	2	build-system	-	"zig build --watch" unreachable error	--watch hits unreachable (name_to_handle_at EINVAL) on Linux older than 6.5; posix.zig:1660 unchanged in 0.17.1.
+31391	list	2	lib/std	-	std.Io.Threaded: posixConnect treats ISCONN as programmer bug and panics (macOS, connection reuse	EISCONN treated as errnoBug in posixConnect; debug panic on connection reuse.
+31390	file	1	linker	cb31390-macho-section-end-reloc-no-subsections.md	MachO Bad Relocation	Section-end relocs fail in objects without subsections-via-symbols; maintainer diagnosis matches 0.17.1 code.
+31389	list	3	lib/std	-	`fs.test.test.AtomicFile` flaky failure on Windows	Flaky Windows AtomicFile test (rename AccessDenied).
+31388	list	3	lib/std	-	`Io.net.test.test.listen on a port, send bytes, receive bytes` flaky timeout	Rare CI timeout of a net test (OpenBSD, x86_64); too vague to act on.
+31382	list	2	build-system	-	freebsd: compiling zig dynamically results in `ld: error: unable to find library -lzstd`	CMake build of Zig itself does not add the zstd lib dir on FreeBSD/Homebrew hosts
+31366	skip	-	-	-	Inconsistent Behavior Between LLVM Backend and Local Backend	48MB of stack arrays overflows the stack; LLVM folding them away is not a defect (stack-overflow detection is github#1639)
+31329	list	3	build-system	-	zig build immediately has segmentation fault on Windows 10	Segfault on a lazy dep with legacy 1220 hash; on 0.17.1 macOS the same zon gives a clean 'invalid hash' error
+31319	list	2	compiler	-	Incorrect alignment of pointers to zero-sized allocations	&.{} coerced to an over-aligned many-pointer yields the undefined address 0xaaaa...; low impact
+31316	file	1	lib/std	cb31316-enum-indexer-branch-quota.md	`std.EnumSet` can exceed eval branch quota	Reproduced on 0.17.1: EnumIndexer's own quota is too low for large sparse enums and callers cannot raise it.
+31314	skip	-	build-system	-	Linking system library in static mode with weak symbols does not work	The weak option means weak dylib linking; request is new semantics for static libs.
+31308	list	2	codegen	-	inline asm: self hosted backend fails compiling lea with base and index	Self-hosted x86_64 inline assembler limitation.
+31307	list	2	lib/std	-	std.Io.Dispatch.sleep cancellation crashes on macOS (wrong cancel callback wiring?)	Io.Dispatch sleep cancel wiring; already fixed in 0.17.1 (ce96dcceab).
+31305	list	2	lib/std	-	std.http.Client doesn't respect ConnectTcpOptions.timeout	Same defect as #31410 (timeout not forwarded in connectTcpOptions).
+31292	skip	-	lib/std	-	`std.Io.Reader.takeLeb128` outputting a error.EndOfStream if input allows it	Behavior defended as correct DWARF LEB128 semantics; documentation at most.
+31288	list	3	codegen	-	Release available in ziglang.org/download for FreeBSD/arm all core dump with SIGSEGV.	Zig compiler host on 32-bit arm-freebsd crashes; exotic host
+31286	list	3	codegen	-	Linking libc with zig backend causes DWARF warnings with valgrind	Likely a Valgrind DWARF parsing gap; self-hosted backend.
+31277	list	2	linker	-	Linker script not used unless explicitly optimized in `build.zig`	Self-hosted linker ignores -T in Debug; freestanding x86_64 use.
+31272	list	3	linker	-	add test coverage for relocation type R_X86_64_PC64 (related to SFrame sections)	Fixed for the old ELF linker in 0.17.1 (9df02121d0); remains only in the new linker.
+31269	list	2	linker	-	link.Elf: extended section header is ignored silently	Self-hosted ELF linker with more than 65279 sections.
+31268	list	2	lib/std	-	Io.Uring hangs on deinit	Io.Uring deinit hangs (thread start vs exit race); experimental Io backend.
+31260	skip	-	lib/std	-	std.Io lacks support for `AF_UNIX` datagram sockets	Feature request.
+31258	list	3	compiler	-	Unexpected "dependency loop detected" error	Not reproduced on 0.17.1 (compiles).
+31251	file	1	build-system	cb31251-excluded-manifest-changes-cached-hash.md	Hash mismatch error after deleting local (but not global) cache and packages	Reproduced on 0.17.1: dep excluding build.zig.zon from paths gets a naked hash when restored from cache.
+31199	list	2	lib/std	-	std.Io.IoUring: complete error handling	Io.Uring panics on unhandled errors; experimental Io backend.
+31193	skip	-	lib/std	-	std.math: rework max/minInt and floatMax/Min	API naming proposal.
+31189	file	1	linker	cb31189-macho-unwind-info-empty-records-segfault.md	zig cc segfaults when cross-compiling to macOS	Mach-O linker segfault on dylibs with no unwind records; reproduced on 0.17.1.
+31182	file	1	zig-cc	cb31182-zig-cc-nostartfiles-ignored.md	Duplicate symbols when statically linking	Reproduced on 0.17.1: zig cc ignores -nostartfiles (no .ze mapping in clang_options.zon) and links its crt1.o
+31171	list	3	compiler	-	Zig compiler hang: infinite monomorphization with inferred error sets.	Hang on unbounded generic recursion; contrived.
+31159	list	2	codegen	-	Debugger can't find source files	Debug-info path quality; not wrong code.
+31147	list	3	lib/std	-	Integer overflow in SelfInfo/Elf.zig dl_iterate_phdr callback	Overflow in debug-info phdr callback with -lc under gVisor sandboxes; exotic environment.
+31145	list	3	compiler	-	Compilation.getAllErrorsAlloc leaks compile_log_text when using `@compileLog`	Leak visible only in debug compiler builds.
+31135	list	2	lib/std	-	missing test coverage for std.http.Client.connectUnix	http.Client.connectUnix does not compile (stale posix error sets) at 0.17.1.
+31123	list	3	lib/std	-	autodoc claims functions available in `std.leb128` when they are actually only available in `std.leb`	Autodoc names namespaces by file name; known (github#19262)
+31118	list	3	lib/std	-	Better compile error for std.meta.Elem	Error-message quality only.
+31116	file	1	codegen	cb31116-vector-signed-shl-sat-invalid-bitcode.md	Bitshifting `@Vector(2, i32)` with `<<|` results in LLVM error: `Invalid record (Producer: 'zig 0.16.0' Reader: 'LLVM 21.1.8')`	Reproduced on 0.17.1 (Invalid record); signed vector <<| with runtime shift passes vector type to minIntConst.
+31103	list	2	compiler	-	Atomic operations are not allowed on packed unions	Inconsistent rejection; workaround is a packed struct wrapper.
+31101	list	2	build-system	-	zig fetch --save fails on gzipped file that isn't a tarball	Single-file .gz downloads are treated as .tar.gz; uncommon dependency shape.
+31069	list	3	upstream-llvm	-	`_start()` and `clone()` are missing `.cantunwind` directives on Arm	32-bit Arm unwind-table nit blocked on LLVM; low impact.
+31066	skip	-	-	-	`sigpipe` standalone test should be restored	Upstream test-coverage task
+31064	list	2	build-system	-	`zig init` example print fn hangs in a test	Writing stdout inside tests hangs the --listen protocol (github#15091); 0.17.1 template no longer has bufferedPrint
+31058	list	2	compiler	-	errdefer runs on non-error return	Reproduced on 0.17.1, but only for nested error unions returned as the inner error.
+31050	list	2	lib/std	-	syscall.start `.blocked => unreachable` triggered under DISK_FULL circumstances	std.debug.print inside an Io.Threaded syscall trips an assertion; seen only on full disk on Windows.
+31036	list	3	codegen	-	u256 fails to lower with c backend on `x86_64-{freebsd,linux}`	C backend only.
+31027	list	3	codegen	-	C backend uses incorrect syntax for declaring function pointers	C backend only.
+31026	list	2	codegen	-	debugger fails to inspect optional parameter	Debug-info quality only.
+31022	file	1	codegen	cb31022-llvm-asm-memory-constraint-operand.md	llvm: inline asm wrong codegen	Reproduced on 0.17.1: "m" asm inputs get a stack slot holding a pointer, not the value.
+31016	list	2	lib/std	-	Unable to connect using `hostname.local` with master	std's own resolver does not do mDNS/.local names (regression vs 0.15 libc-style lookup); std.net use.
+31002	list	3	compiler	-	Miscompilation in nested switch with u2 result type	Vague: needs an external repo and may be result-location aliasing in user code.
+30999	list	2	build-system	-	Trying to install a directory as a header gives an unhelpful error	Installing a directory as a header fails with an unhelpful ISDIR/Unexpected error; user mistake.
+30972	list	3	target-defs	-	`std.Target` has incorrect `long double` size for m68k	m68k long double size; exotic arch, waits on Clang.
+30962	skip	-	-	-	`test-c-abi` is missing `aarch64-windows`	Upstream test-coverage task, blocked on the Windows arm64 crash
+30916	list	2	lib/std	-	bug: `std.Uri.parse` rejects "schema://" URI	Uri.parse rejects empty authority URIs like "calculator://"; minor parser defect.
+30908	list	2	codegen	-	Comparing a Vector with one or both optional produces invalid LLVM IR (invalid phi record) and compares as a bool instead of a bool Vector.	Reproduced on 0.17.1 (Invalid phi record) but unusual construct with unclear semantics.
+30907	list	3	zig-cc	-	`... without 'evex512' enabled changes the ABI` + FIX	Does not reproduce on 0.17.1; LLVM 22 target defs have no evex512 feature.
+30890	list	2	lib/std	-	zon cannot roundtrip pointer to array of u8	zon stringify emits a string for *const [N]u8 but parse rejects it.
+30879	file	1	lib/std	cb35512-libc-unsetenv-environ-null-panic.md	std.log.info panics after loading a c library	Same root cause as #35512 (GLFW/SDL unsetenv leaves null in cached envp); covered by the same backlog file.
+30866	list	2	compiler	-	Embedfile inconsistency with large files	Known InternPool limit with very large embedded arrays.
+30862	list	3	compiler	-	Confusing error message for invalid range	Error-message quality only.
+30855	list	2	lib/std	-	Flaky test `crypto.blake3.test.BLAKE3 parallel vs sequential`	Intermittent wrong BLAKE3 output on loongarch64 CI; undiagnosed, similar flakes seen on other arches.
+30853	list	2	lib/std	-	fetch of gitlab repo gives `TlsInitializationFailed`	Not reproduced: zig fetch of the reported URL succeeds on 0.17.1 (RSA-PSS fixes likely landed).
+30849	list	3	compiler	-	Segfault when a function's stack is unusually large	Expected stack overflow; asks for a better message.
+30827	list	3	lib/std	-	Autodoc: Javascript does not handle non-QWERTY keyboard layouts	Autodoc keyboard shortcuts use KeyboardEvent.code; minor UI bug
+30806	list	3	lib/std	-	HTTP tests are randomly timing out on OpenBSD	HTTP tests time out on OpenBSD CI; exotic OS.
+30774	list	2	compiler	-	pointer subtraction is not safety checked	Missing runtime safety check.
+30755	list	3	lib/std	-	test runner receiveMessage() caused EFAULT	One-off EFAULT under qemu-riscv64 in CI; too vague to act on.
+30753	list	2	build-system	-	error.Unexpected in std.Build.Watch with fanotify	fanotify EACCES maps to error.Unexpected and watch tries /root on Linux; --watch only.
+30734	file	1	zig-cc	cb30734-zig-cc-wp-preprocessor-flag.md	Zig cc does not support "-Wp" flag	zig cc fatals on -Wp, options; reproduced on 0.17.1.
+30728	list	3	lib/std	-	Fuzzer is broken on OpenBSD (`libfuzzer` standalone test fails with no PCs)	Fuzzing on OpenBSD only
+30726	list	2	lib/std	-	`std.process.Child.spawn` overwrites fd3 when using a `std.Progress.Node`	Progress pipe is dup2'd onto fd 3 in children, clobbering an inherited fd 3.
+30720	list	3	lib/std	-	std.debug: captureCurrentStackTrace broke with latest std.fs => std.Io changes for freestanding (regression?)	Freestanding stack capture now needs a debug Io; freestanding only.
+30711	list	2	compiler	-	compiler segfault with comptime "allocation"	Same as 37097; 0.17.1 release gives misleading error, not a crash.
+30702	list	3	bundled-libc	-	Cannot enable function sections for MinGW-w64 CRT code	Internal build option for MinGW CRT; no user-facing failure by default.
+30697	list	3	compiler	-	`isize` becomes `u64` in error message	Error-message quality only.
+30689	list	2	lib/std	-	some functions in stdlib are incorrectly classified as type functions	Autodoc misclassifies functions returning anonymous structs
+30680	list	3	lib/std	-	HTTP GET request hangs when file is run from `zig build`	Vague hang under zig build that later turned into a TLS cert error; not actionable.
+30676	list	2	lib/std	-	flaky tests: crypto.kangarootwelve.test.KT128 sequential and parallel produce same output for many random lengths	Nondeterministic wrong KangarooTwelve parallel output on x86_64/aarch64/loongarch64; undiagnosed, tests disabled.
+30659	list	2	lib/std	-	does all of compiler_rt conform to the zig-libc-test math tests?	compiler_rt math may not raise FP exception flags as libc-test expects; conformance audit.
+30655	list	3	build-system	-	`zig build test --fuzz` results in a crash with self-hosted backend	Fuzzing with self-hosted backend.
+30654	skip	-	lib/std	-	std.fs.Dir.walk() won't follow inner symlinks	Not following symlinks matches find's default; SelectiveWalker covers the use case.
+30653	list	2	build-system	-	`zig build check --watch` process does not kill child processes when sent an external code	Killing zig build --watch leaves child processes running; editor-integration annoyance.
+30649	list	2	lib/std	-	IORING_SETUP_CQE32 causes faulty behaviour	IoUring ignores IORING_SETUP_CQE32; io_uring is out of scope.
+30647	list	3	compiler	-	Creating constant `std.time.epoch.Second` fails `test-behavior` in Windows only	Windows-only behavior test failure tied to error-set name ordering; unclear defect.
+30642	list	3	build-system	-	freebsd: stage3 debug: undefined symbol: backtrace	Debug build of Zig itself on a FreeBSD host misses libexecinfo; host-only
+30627	list	2	compiler	-	optional tagged union cant be compared against enum	Missing comparison support; workaround exists.
+30623	list	2	lib/std	-	`std.http.Client.request` fails on HTTPS sendFile calls	Chunked HTTPS request body's final TLS record not flushed; std.http.
+30617	list	2	compiler	-	Integer Overflow panic points to wrong line in ReleaseSafe	Wrong panic source line on macOS ReleaseSafe; diagnostic.
+30614	list	2	lib/std	-	Hashed reader fails assert in discardRemaining when backing reader is unbuffered	Reader.Hashed with an unbuffered reader asserts in defaultRebase.
+30613	file	1	zig-cc	cb30613-zig-cc-u-symbol-parsed-as-file.md	`zig cc`: `-u symbol` flag incorrectly parsed as standalone flag, treating symbol as filename	zig cc treats the -u argument as an input file; reproduced on 0.17.1.
+30605	list	3	compiler	-	comptime code crashes compiler randomly	Reported fixed by #35711 (sibling 31617 no longer reproduces on 0.17.1).
+30596	skip	-	-	-	wine is failing some std lib file system tests	Downstream Wine bugs tracking issue
+30591	list	2	lib/std	-	unexpected errno: 111 (connection refused) when trying to read from a closed port/reader	ECONNREFUSED on connected UDP read hits unexpectedErrno.
+30584	list	2	lib/std	-	std.Io.Threaded: Sig pipe not handled on single threaded	Single-threaded Io.Threaded init skips SIGPIPE handling and ignores InitOptions.
+30583	list	2	lib/std	-	HTTP HEAD request fails to follow redirect	HEAD requests return before redirect handling despite default redirect_behavior.
+30572	list	3	linker	-	Cross-compiling to static libraries doesn't pad to even byte boundaries	Not reproduced on 0.17.1; odd-size members are padded correctly.
+30564	file	1	compiler	cb30564-flto-self-hosted-backend-crash.md	Using LLD without specifying the usage of LLVM results in a compiler segfault	-flld now errors, but -flto on x86_64-linux Debug still segfaults on 0.17.1.
+30563	list	2	build-system	-	Zig fails to cache linker warnings	Warnings vanish on cached rebuilds; cosmetic.
+30556	list	2	linker	-	Section `.buildid` is always included in the binary for Windows targets	-BREPRO in release forces a debug directory despite --build-id=none; minor.
+30228	list	3	compiler	-	`-Ddev=sema`: `zig build -fno-emit-bin --verbose-air` code path `dev.check`s for features it shouldn't need	Only affects -Ddev=sema compiler dev builds.
+30227	skip	-	lib/std	-	`std.Io.Reader.streamDelimiter` can't get the last stream length	Question whether EndOfStream semantics are intended; API behavior discussion.
+30222	list	2	zig-cc	-	zig c++  does not support compile only mode	clang-scan-deps cannot drive zig c++ for C++20 module scanning; integration gap.
+30210	list	3	compiler	-	Segfault when casting error{}!u8 to comptime_int	Not reproduced on 0.17.1; correct error given.
+30196	list	2	lib/std	-	zig -femit-docs on file structs seems to muddle top level doc comments with normal doc comments	Autodoc mixes //! and the first /// doc comment in file structs
+30191	list	2	build-system	-	Zig build panics and hangs when building with system bundle (--system)	--system panic and hang reported on 0.15.2 code that moved to Maker; may overlap cb37537, not rechecked.
+30190	list	2	lib/std	-	HTTP Client over-lenient when parsing Content-Length	Content-Length parsed with Zig parseInt and accepts underscores.
+30184	list	2	build-system	-	Cache fills hard drive during iteration (200gb + in < 1 day in .zig-cache)	.zig-cache grows without bound during --watch (no cache GC, see #30193); known limitation.
+30145	list	3	compiler	-	Packed Struct declaration gets incorrect defaultValue	No longer reachable: 0.17.1 rejects pointer fields in packed structs.
+30144	list	2	build-system	-	Undefined Behavior with Multiple Calls to "addExecutable" with the Same Name	Two addExecutable calls with one name pick a source nondeterministically instead of erroring; user mistake.
+30143	list	3	compiler	-	Misleading error message on invalid keyword name	Parser error-message quality only.
+30142	list	2	lib/std	-	`std.DynLib` causes segfault when using eg. `std.debug.print` (linux)	Zig's own ELF loader leaves the plugin's runtime (TLS etc.) uninitialized; dlopen works.
+30136	list	3	linker	-	DLL on Windows not building	Self-hosted COFF linker in a Zig built without LLVM.
+30134	skip	-	bundled-libc	-	Revert TSan FreeBSD workaround once we bump our baseline to FreeBSD 15	Maintenance task.
+30133	list	2	lib/std	-	`std.StaticStringMapWithEql.initSortedKVs` expects values to also be comptime-known	StaticStringMap.init with runtime values fails to compile; small fix proposed.
+30130	list	2	lib/std	-	`std.Io.Queue.put` does not correctly handle cancellation	Canceled Queue.put drops already-sent count, leaking items.
+30127	list	3	compiler	-	incremental compilation keeps read lock that can deadlock other processes	Incremental compilation only.
+30116	skip	-	-	-	Documentation incorrectly states that inline for has comptime available capture, but this is not guaranteed	Language reference documentation fix
+30111	skip	-	lib/std	-	audit ProcessNotFound in error sets	Error-set design audit.
+30093	list	2	zig-cc	-	Clang/LLVM source-based code coverage flags have no effect	No profile runtime is linked, so coverage output is silently missing.
+30092	list	3	bundled-libc	-	Atomic operations fail with `-mcpu=arm926ej_s` on `arm-linux-musleabi` target	ARMv5 CPU only.
+30090	file	1	zig-cc	cb30090-builtin-headers-before-user-libcxx.md	Using build.zig to build C++ projects for emscripten does not work due to isystem ordering / conflicts	Builtin headers precede user libc++ include paths, breaking Emscripten C++ builds.
+30074	list	2	lib/std	-	Flaky `crypto.argon2.test.argon2d` failure on `loongarch64-linux` (with LSX/LASX) in CI	Intermittent wrong argon2d output on loongarch64 CI under memory pressure; undiagnosed.
+30070	list	2	lib/std	-	Io.Reader.ending is unsound	Reader.ending points to read-only memory but some Reader methods write fields, which can segfault.
+30068	list	2	build-system	-	build system: changing `addOptionPath` file during `--watch` duplicates the entry	Editing an addOptionPath file under --watch duplicates the generated declaration; --watch only.
+30066	list	3	codegen	-	Compiler crash	Did not reproduce on 0.17.1; likely fixed by the type-resolution rework (#31403) in 0.17.1.
+30027	skip	-	-	-	Tracking Issue: Legacy Issues	Tracking issue for the GitHub legacy tracker
+30025	list	2	build-system	-	Step.TranslateC: CheckCacheFailed when root_source_file doesn't exist	TranslateC on a missing root file reports CacheCheckFailed instead of FileNotFound; error quality.
+30023	skip	-	lib/std	-	std.json / std.fmt: cannot parse / format valueless ("noreturn-like") types	Feature request for valueless types in json/fmt.
