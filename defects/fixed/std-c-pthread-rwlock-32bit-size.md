@@ -70,7 +70,7 @@ As done; see Fix.
 
 ## Verification
 
-- `test/standalone/pthread_rwlock_t_size`: for a set of 32-bit and 64-bit
+- `test/standalone/pthread_type_layouts`: for a set of 32-bit and 64-bit
   glibc and musl targets, translates `<pthread.h>` and fails to compile if
   `std.c.pthread_rwlock_t` differs from C's in size or alignment. Run it
   from that directory with `zig build test`, or as part of
@@ -83,9 +83,10 @@ As done; see Fix.
 - `lib/std/c.zig`: the non-Android Linux `pthread_rwlock_t` is 56 bytes
   with 8-byte pointers, as before. With 4-byte pointers it is 48 on
   `riscv32` glibc, 44 on `gnux32`, and 32 otherwise.
-- `test/standalone/pthread_rwlock_t_size`: the test above, over
-  `aarch64`, `x86_64` (gnu, musl, gnux32), `arm` (gnueabihf,
-  musleabihf), `x86`, `riscv32` (gnu, musl) and
+- `test/standalone/pthread_type_layouts` (first added as
+  `pthread_rwlock_t_size`, before it covered the other pthread types): the
+  test above, over `aarch64`, `x86_64` (gnu, musl, gnux32), `arm`
+  (gnueabihf, musleabihf), `x86`, `riscv32` (gnu, musl) and
   `mips64el-linux-gnuabin32`. It fails on the 8 32-bit targets without the
   fix ("std.c.pthread_rwlock_t has size 56 align 4, but C has size 32
   align 4", 44 for gnux32, 48 for riscv32 glibc) and passes with it.
@@ -109,6 +110,10 @@ checkout's `lib/`:
 ## Notes
 
 - Split out of ohos-libc-support.
+- Android was not part of the comparison above. A later comparison with
+  the Android NDK found the 64-bit Android `pthread_rwlock_t` aligned to 8,
+  where bionic's `int32_t` array is aligned to 4. That was fixed with
+  std-c-pthread-mutex-t-linux-abi-gaps, which has the same cause.
 - The same comparison found mismatches in sibling types with other causes:
   std-c-pthread-attr-t-layout, std-c-pthread-cond-t-glibc-32bit-underaligned,
   std-c-sem-t-musl-overaligned and std-c-pthread-mutex-t-linux-abi-gaps.

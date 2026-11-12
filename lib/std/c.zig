@@ -8171,16 +8171,17 @@ pub const pthread_spinlock_t = switch (native_os) {
 
 pub const pthread_mutex_t = switch (native_os) {
     .linux => extern struct {
-        data: [data_len]u8 align(@alignOf(usize)) = @splat(0),
+        data: [data_len]u8 align(if (native_abi.isAndroid()) 4 else @alignOf(usize)) = @splat(0),
 
-        const data_len = switch (native_abi) {
-            .musl, .musleabi, .musleabihf, .ohos, .ohoseabi => if (@sizeOf(usize) == 8) 40 else 24,
-            .gnu, .gnuabin32, .gnuabi64, .gnueabi, .gnueabihf, .gnux32 => switch (native_arch) {
-                .aarch64 => 48,
-                .x86_64 => if (native_abi == .gnux32) 32 else 40,
-                .mips64, .powerpc64, .powerpc64le, .sparc64 => 40,
-                else => if (@sizeOf(usize) == 8) 40 else 24,
-            },
+        const data_len = if (native_abi.isMusl())
+            if (@sizeOf(usize) == 8) 40 else 24
+        else if (native_abi.isGnu()) switch (native_arch) {
+            .aarch64, .aarch64_be => 48,
+            .riscv32 => 32,
+            .x86_64 => if (native_abi == .gnux32) 32 else 40,
+            .powerpc64, .powerpc64le, .sparc64 => 40,
+            else => if (@sizeOf(usize) == 8) 40 else 24,
+        } else switch (native_abi) {
             .android, .androideabi => if (@sizeOf(usize) == 8) 40 else 4,
             else => @compileError("unsupported ABI"),
         };
@@ -8240,7 +8241,16 @@ pub const pthread_mutex_t = switch (native_os) {
 
 pub const pthread_cond_t = switch (native_os) {
     .linux => extern struct {
-        data: [48]u8 align(@alignOf(usize)) = @splat(0),
+        data: [data_len]u8 align(data_align) = @splat(0),
+
+        const data_len = if (native_abi.isAndroid() and @sizeOf(usize) == 4) 4 else 48;
+        // On m68k, glibc's `long long` member is 2-byte aligned and its 4-byte lock alignment wins.
+        const data_align = if (native_abi.isGnu() and native_arch != .m68k)
+            @alignOf(c_longlong)
+        else if (native_abi.isAndroid())
+            4
+        else
+            @alignOf(usize);
     },
     .driverkit, .ios, .maccatalyst, .macos, .tvos, .visionos, .watchos => extern struct {
         sig: c_long = 0x3CB0B1BB,
@@ -8290,10 +8300,10 @@ pub const pthread_rwlock_t = switch (native_os) {
     .linux => switch (native_abi) {
         .android, .androideabi => switch (@sizeOf(usize)) {
             4 => extern struct {
-                data: [40]u8 align(@alignOf(usize)) = @splat(0),
+                data: [40]u8 align(4) = @splat(0),
             },
             8 => extern struct {
-                data: [56]u8 align(@alignOf(usize)) = @splat(0),
+                data: [56]u8 align(4) = @splat(0),
             },
             else => @compileError("impossible pointer size"),
         },
@@ -8355,7 +8365,20 @@ pub const pthread_rwlock_t = switch (native_os) {
 };
 
 pub const pthread_attr_t = switch (native_os) {
-    .linux, .emscripten, .dragonfly => extern struct {
+    .linux => extern union {
+        __size: [size]u8,
+        __align: c_long,
+
+        const size = if (native_abi.isAndroid())
+            if (@sizeOf(usize) == 8) 56 else 24
+        else switch (native_arch) {
+            .aarch64, .aarch64_be => if (native_abi.isGnu()) 64 else 56,
+            .riscv32 => if (native_abi.isGnu()) 32 else 36,
+            .x86_64 => if (native_abi == .gnux32) 32 else if (@sizeOf(usize) == 8) 56 else 36,
+            else => if (@sizeOf(usize) == 8) 56 else 36,
+        };
+    },
+    .emscripten, .dragonfly => extern struct {
         __size: [56]u8,
         __align: c_long,
     },
@@ -8417,7 +8440,15 @@ pub const pthread_spin_t = switch (native_os) {
 };
 
 pub const sem_t = switch (native_os) {
-    .linux, .emscripten => extern struct {
+    .linux => extern struct {
+        __size: [size]u8 align(if (native_abi.isGnu()) @alignOf(usize) else @alignOf(c_int)),
+
+        const size = if (native_abi.isAndroid())
+            if (@sizeOf(usize) == 8) 16 else 4
+        else
+            4 * @sizeOf(usize);
+    },
+    .emscripten => extern struct {
         __size: [4 * @sizeOf(usize)]u8 align(@alignOf(usize)),
     },
     .driverkit, .ios, .maccatalyst, .macos, .tvos, .visionos, .watchos => c_int,
